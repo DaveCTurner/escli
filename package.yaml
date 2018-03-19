@@ -1,0 +1,36 @@
+name:                escli
+version:             0.1.0.0
+github:              "DaveCTurner/escli"
+license:             BSD3
+author:              "David Turner"
+maintainer:          "dave.c.turner@gmail.com"
+copyright:           "2018 Author name here"
+
+dependencies:
+- base >= 4.7 && < 5
+- optparse-applicative
+- conduit
+- conduit-extra
+- bytestring
+- aeson
+- attoparsec
+- text
+- http-client
+- http-types
+- network-uri
+- aeson-pretty
+- iso8601-time
+- time
+
+executables:
+  escli:
+    main:                Main.hs
+    source-dirs:         src
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall -Werror
+    other-modules:
+    - Config
+    - ESCommand
