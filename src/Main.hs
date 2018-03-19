@@ -30,7 +30,8 @@ import Network.HTTP.Types.Status
 main :: IO ()
 main = withConfig $ \config -> do
 
-    putStrLn $ "Base URI: " ++ show (esBaseURI config)
+    putStrLn $ "# Server URI: " ++ show (esBaseURI config)
+    putStrLn $ ""
     manager <- newManager defaultManagerSettings
 
     runConduit
@@ -67,6 +68,7 @@ runCommand Config{..} manager ESCommand{..} = do
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
         resolvedUriString = getUri req `relativeFrom` esBaseURI
 
+    putStrLn $ "# " ++ replicate 40 '='
     putStrLn "# Request: "
     putStrLn $ httpVerbString <> " " <> show resolvedUriString
     forM_ cmdBody $ \v -> putStrLn $ prettyStringFromJson v
@@ -74,6 +76,7 @@ runCommand Config{..} manager ESCommand{..} = do
     putStrLn $ "# at " ++ formatISO8601Millis before
     putStrLn ""
 
+    putStrLn $ "# " ++ replicate 40 '-'
     response <- httpLbs req manager
     after <- getCurrentTime
     putStrLn "# Response: "

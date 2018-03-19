@@ -28,7 +28,11 @@ esCommand = AP.skipMany skipNewline >> ESCommand
 
     where
     skipNewline :: AP.Parser ()
-    skipNewline = void $ AP.word8 0x0a
+    skipNewline = do
+        void $ optional $ do
+            void $ AP.word8 0x23
+            AP.takeWhile (/= 0x0a)
+        void $ AP.word8 0x0a
 
     jsonNotNewline :: AP.Parser Value
     jsonNotNewline = AP.peekWord8 >>= \case
