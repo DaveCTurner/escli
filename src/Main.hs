@@ -71,7 +71,9 @@ runCommand Config{..} manager ESCommand{..} = do
     putStrLn $ "# " ++ replicate 40 '='
     putStrLn "# Request: "
     putStrLn $ httpVerbString <> " " <> show resolvedUriString
-    forM_ cmdBody $ \v -> putStrLn $ prettyStringFromJson v
+    case cmdBody of
+        [v] -> putStrLn $ prettyStringFromJson v
+        _   -> forM_ cmdBody $ putStrLn . T.unpack . T.decodeUtf8 . BL.toStrict . encode
     before <- getCurrentTime
     putStrLn $ "# at " ++ formatISO8601Millis before
     putStrLn ""
