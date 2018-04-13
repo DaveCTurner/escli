@@ -26,6 +26,7 @@ import qualified Data.Aeson.Encode.Pretty
 import Data.Time
 import Data.Time.ISO8601
 import Network.HTTP.Types.Status
+import Network.HTTP.Media
 
 main :: IO ()
 main = withConfig $ \config -> do
@@ -36,8 +37,8 @@ main = withConfig $ \config -> do
 
     runConduit
          $  sourceHandle stdin
-        =$= conduitParser esCommand
-        =$= awaitForever (liftIO . runCommand config manager . snd)
+         .| conduitParser esCommand
+         .| awaitForever (liftIO . runCommand config manager . snd)
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v
@@ -84,9 +85,17 @@ runCommand Config{..} manager ESCommand{..} = do
     putStrLn "# Response: "
     putStrLn $ "# " ++ show (statusCode    $ responseStatus response)
             ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
-    let Just bodyValue = decode $ responseBody response :: Maybe Value
-    forM_ (Prelude.lines $ prettyStringFromJson bodyValue) $ \l
-        -> putStrLn $ "# " ++ l
+
+    let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
+            Left er -> ["JSON parse error: " ++ show er, show b]
+            Right bv -> Prelude.lines $ prettyStringFromJson bv
+        linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
+
+    case lookup hContentType (responseHeaders response) of
+        Nothing -> putStrLn "# No content-type returned"
+        Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
+            Nothing -> putStrLn $ "# Unknown content-type: " ++ show ct
+            Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> putStrLn $ "# " ++ l
     putStrLn $ "# at " ++ formatISO8601Millis after
     putStrLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
     putStrLn ""

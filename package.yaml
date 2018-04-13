@@ -21,6 +21,7 @@ dependencies:
 - aeson-pretty
 - iso8601-time
 - time
+- http-media
 
 executables:
   escli:
