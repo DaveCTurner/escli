@@ -7,8 +7,9 @@ import Data.Monoid
 import Network.URI
 
 data Config = Config
-    { esBaseURI :: URI
-    , esHideTiming :: Bool
+    { esBaseURI      :: URI
+    , esHideTiming   :: Bool
+    , esHideHeadings :: Bool
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -32,6 +33,9 @@ configParser = Config
     <*> switch 
         (  long "hide-timing"
         <> help "Hide timing information")
+    <*> switch 
+        (  long "hide-headings"
+        <> help "Hide request/response headings")
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)

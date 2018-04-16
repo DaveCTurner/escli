@@ -74,8 +74,9 @@ runCommand Config{..} manager ESCommand{..} = do
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
         resolvedUriString = getUri req `relativeFrom` esBaseURI
 
-    yield $ "# " ++ replicate 40 '='
-    yield "# Request: "
+    unless esHideHeadings $ do
+        yield $ "# " ++ replicate 40 '='
+        yield "# Request: "
     yield $ httpVerbString <> " " <> show resolvedUriString
     case cmdBody of
         [v] -> yield $ prettyStringFromJson v
@@ -87,8 +88,9 @@ runCommand Config{..} manager ESCommand{..} = do
 
     response <- liftIO $ httpLbs req manager
     after <- liftIO getCurrentTime
-    yield $ "# " ++ replicate 40 '-'
-    yield "# Response: "
+    unless esHideHeadings $ do
+        yield $ "# " ++ replicate 40 '-'
+        yield "# Response: "
     yield $ "# " ++ show (statusCode    $ responseStatus response)
             ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
