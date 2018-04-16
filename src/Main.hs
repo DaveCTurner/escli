@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
 
 module Main where
 
@@ -7,6 +8,7 @@ import System.IO
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Conduit
+import qualified Data.Conduit.List as DCL
 import Data.Conduit.Binary
 import Config
 import ESCommand
@@ -39,7 +41,9 @@ main = withConfig $ \config -> do
     runConduit
          $  sourceHandle stdin
          .| conduitParser esCommand
-         .| awaitForever (liftIO . runCommand config manager . snd)
+         .| DCL.map snd
+         .| awaitForever (runCommand config manager)
+         .| awaitForever (liftIO . putStrLn)
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v
@@ -49,7 +53,7 @@ prettyStringFromJson v
     aesonPrettyConfig = Data.Aeson.Encode.Pretty.defConfig
         { Data.Aeson.Encode.Pretty.confIndent = Data.Aeson.Encode.Pretty.Spaces 2 }
 
-runCommand :: Config -> Manager -> ESCommand -> IO ()
+runCommand :: Config -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
 runCommand Config{..} manager ESCommand{..} = do
     let initReq = fromMaybe (error "Bad URI") $ do
             uriRef <- parseURIReference httpPath
@@ -70,22 +74,22 @@ runCommand Config{..} manager ESCommand{..} = do
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
         resolvedUriString = getUri req `relativeFrom` esBaseURI
 
-    putStrLn $ "# " ++ replicate 40 '='
-    putStrLn "# Request: "
-    putStrLn $ httpVerbString <> " " <> show resolvedUriString
+    yield $ "# " ++ replicate 40 '='
+    yield "# Request: "
+    yield $ httpVerbString <> " " <> show resolvedUriString
     case cmdBody of
-        [v] -> putStrLn $ prettyStringFromJson v
-        _   -> forM_ cmdBody $ putStrLn . T.unpack . T.decodeUtf8 . BL.toStrict . encode
-    before <- getCurrentTime
+        [v] -> yield $ prettyStringFromJson v
+        _   -> forM_ cmdBody $ yield . T.unpack . T.decodeUtf8 . BL.toStrict . encode
+    before <- liftIO getCurrentTime
     unless esHideTiming $
-        putStrLn $ "# at " ++ formatISO8601Millis before
-    putStrLn ""
+        yield $ "# at " ++ formatISO8601Millis before
+    yield ""
 
-    putStrLn $ "# " ++ replicate 40 '-'
-    response <- httpLbs req manager
-    after <- getCurrentTime
-    putStrLn "# Response: "
-    putStrLn $ "# " ++ show (statusCode    $ responseStatus response)
+    response <- liftIO $ httpLbs req manager
+    after <- liftIO getCurrentTime
+    yield $ "# " ++ replicate 40 '-'
+    yield "# Response: "
+    yield $ "# " ++ show (statusCode    $ responseStatus response)
             ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
     let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
@@ -94,14 +98,14 @@ runCommand Config{..} manager ESCommand{..} = do
         linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
 
     case lookup hContentType (responseHeaders response) of
-        Nothing -> putStrLn "# No content-type returned"
+        Nothing -> yield "# No content-type returned"
         Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
-            Nothing -> putStrLn $ "# Unknown content-type: " ++ show ct
-            Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> putStrLn $ "# " ++ l
+            Nothing -> yield $ "# Unknown content-type: " ++ show ct
+            Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> yield $ "# " ++ l
     unless esHideTiming $ do
-        putStrLn $ "# at " ++ formatISO8601Millis after
-        putStrLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
-    putStrLn ""
+        yield $ "# at " ++ formatISO8601Millis after
+        yield $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
+    yield ""
 
 data BuilderWithLength = BuilderWithLength B.Builder !Int64
 
