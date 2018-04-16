@@ -91,8 +91,9 @@ runCommand Config{..} manager ESCommand{..} = do
     unless esHideHeadings $ do
         yield $ "# " ++ replicate 40 '-'
         yield "# Response: "
-    yield $ "# " ++ show (statusCode    $ responseStatus response)
-            ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
+    unless esHideStatusCode $
+        yield $ "# " ++ show (statusCode    $ responseStatus response)
+                ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
     let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
             Left er -> ["JSON parse error: " ++ show er, show b]
