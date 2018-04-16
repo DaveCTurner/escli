@@ -18,6 +18,7 @@ import Data.Maybe
 import Network.HTTP.Client
 import Network.HTTP.Types.Header
 import Data.Aeson
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -30,6 +31,10 @@ import Network.HTTP.Types.Status
 import Network.HTTP.Media
 import Data.String
 
+withMaybeLogFile :: Maybe FilePath -> ((B.ByteString -> IO ()) -> IO a) -> IO a
+withMaybeLogFile Nothing go = go (const $ return ())
+withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> go (B.hPutStr h)
+
 main :: IO ()
 main = withConfig $ \config -> do
 
@@ -38,12 +43,15 @@ main = withConfig $ \config -> do
     manager <- newManager defaultManagerSettings
       { managerResponseTimeout = responseTimeoutNone }
 
-    runConduit
-         $  sourceHandle stdin
-         .| conduitParser esCommand
-         .| DCL.map snd
-         .| awaitForever (runCommand config manager)
-         .| awaitForever (liftIO . putStrLn)
+    withMaybeLogFile (esLogFile config) $ \writeLog -> 
+        runConduit
+             $  sourceHandle stdin
+             .| conduitParser esCommand
+             .| DCL.map snd
+             .| awaitForever (runCommand config manager)
+             .| awaitForever (\logEntry -> liftIO $ do
+                    putStrLn logEntry
+                    writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v

@@ -12,6 +12,7 @@ data Config = Config
     , esHideHeadings       :: Bool
     , esHideStatusCode     :: Bool
     , esHideCurlEquivalent :: Bool
+    , esLogFile            :: Maybe FilePath
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -44,6 +45,10 @@ configParser = Config
     <*> switch 
         (  long "hide-curl-equivalent"
         <> help "Hide `curl`-equivalent command")
+    <*> optional (strOption
+        (  long "log-file"
+        <> help "File in which to record output"
+        <> metavar "FILE"))
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)
