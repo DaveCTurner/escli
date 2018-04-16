@@ -22,6 +22,7 @@ dependencies:
 - iso8601-time
 - time
 - http-media
+- mtl
 
 executables:
   escli:

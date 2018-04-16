@@ -6,7 +6,7 @@ module Main where
 
 import System.IO
 import Control.Monad
-import Control.Monad.IO.Class
+import Control.Monad.Writer
 import Data.Conduit
 import qualified Data.Conduit.List as DCL
 import Data.Conduit.Binary
@@ -22,7 +22,6 @@ import qualified Data.ByteString.Builder as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BL
-import Data.Monoid
 import Data.Int
 import qualified Data.Aeson.Encode.Pretty
 import Data.Time
@@ -73,42 +72,45 @@ runCommand Config{..} manager ESCommand{..} = do
 
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
         resolvedUriString = getUri req `relativeFrom` esBaseURI
+        tellLn l = tell l >> tell "\n"
 
-    unless esHideHeadings $ do
-        yield $ "# " ++ replicate 40 '='
-        yield "# Request: "
-    yield $ httpVerbString <> " " <> show resolvedUriString
-    case cmdBody of
-        [v] -> yield $ prettyStringFromJson v
-        _   -> forM_ cmdBody $ yield . T.unpack . T.decodeUtf8 . BL.toStrict . encode
     before <- liftIO getCurrentTime
-    unless esHideTiming $
-        yield $ "# at " ++ formatISO8601Millis before
-    yield ""
+
+    yield $ execWriter $ do
+        unless esHideHeadings $ do
+            tellLn $ "# " ++ replicate 40 '='
+            tellLn   "# Request: "
+        tellLn $ httpVerbString <> " " <> show resolvedUriString
+        case cmdBody of
+            [v] -> tellLn $ prettyStringFromJson v
+            _   -> forM_ cmdBody $ tellLn . T.unpack . T.decodeUtf8 . BL.toStrict . encode
+        unless esHideTiming $
+            tellLn $ "# at " ++ formatISO8601Millis before
 
     response <- liftIO $ httpLbs req manager
     after <- liftIO getCurrentTime
-    unless esHideHeadings $ do
-        yield $ "# " ++ replicate 40 '-'
-        yield "# Response: "
-    unless esHideStatusCode $
-        yield $ "# " ++ show (statusCode    $ responseStatus response)
-                ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
-    let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
-            Left er -> ["JSON parse error: " ++ show er, show b]
-            Right bv -> Prelude.lines $ prettyStringFromJson bv
-        linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
+    yield $ execWriter $ do
+        unless esHideHeadings $ do
+            tellLn $ "# " ++ replicate 40 '-'
+            tellLn "# Response: "
+        unless esHideStatusCode $
+            tellLn $ "# " ++ show (statusCode    $ responseStatus response)
+                    ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
-    case lookup hContentType (responseHeaders response) of
-        Nothing -> yield "# No content-type returned"
-        Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
-            Nothing -> yield $ "# Unknown content-type: " ++ show ct
-            Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> yield $ "# " ++ l
-    unless esHideTiming $ do
-        yield $ "# at " ++ formatISO8601Millis after
-        yield $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
-    yield ""
+        let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
+                Left er -> ["JSON parse error: " ++ show er, show b]
+                Right bv -> Prelude.lines $ prettyStringFromJson bv
+            linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
+
+        case lookup hContentType (responseHeaders response) of
+            Nothing -> tellLn "# No content-type returned"
+            Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
+                Nothing -> tellLn $ "# Unknown content-type: " ++ show ct
+                Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
+        unless esHideTiming $ do
+            tellLn $ "# at " ++ formatISO8601Millis after
+            tellLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
 
 data BuilderWithLength = BuilderWithLength B.Builder !Int64
 
