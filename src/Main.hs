@@ -28,6 +28,7 @@ import Data.Time
 import Data.Time.ISO8601
 import Network.HTTP.Types.Status
 import Network.HTTP.Media
+import Data.String
 
 main :: IO ()
 main = withConfig $ \config -> do
@@ -52,21 +53,29 @@ prettyStringFromJson v
     aesonPrettyConfig = Data.Aeson.Encode.Pretty.defConfig
         { Data.Aeson.Encode.Pretty.confIndent = Data.Aeson.Encode.Pretty.Spaces 2 }
 
+escapeShellQuoted :: Char -> String
+escapeShellQuoted c
+    | c == '\n' = "\\n"
+    | c == '\'' = "\\'"
+    | otherwise = [c]
+
 runCommand :: Config -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
 runCommand Config{..} manager ESCommand{..} = do
-    let initReq = fromMaybe (error "Bad URI") $ do
-            uriRef <- parseURIReference httpPath
-            let absUri = uriRef `relativeTo` esBaseURI
-            parseRequest $ show absUri
+    let absUri = maybe (error "Bad URI") (show . (`relativeTo` esBaseURI)) (parseURIReference httpPath)
+        initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
 
         BuilderWithLength bodyBuilder bodyLength = builderFromBody cmdBody
 
+        maybeContentType = case cmdBody of
+                []  -> Nothing
+                [_] -> Just "application/json"
+                _   -> Just "application/x-ndjson"
+
         req = initReq
             { method = httpVerb
-            , requestHeaders = case cmdBody of
-                []  -> []
-                [_] -> [(hContentType, "application/json")]
-                _   -> [(hContentType, "application/x-ndjson")]
+            , requestHeaders = case maybeContentType of
+                Nothing -> []
+                Just ct -> [(hContentType, fromString ct)]
             , requestBody = RequestBodyBuilder bodyLength bodyBuilder
             }
 
@@ -86,6 +95,20 @@ runCommand Config{..} manager ESCommand{..} = do
             _   -> forM_ cmdBody $ tellLn . T.unpack . T.decodeUtf8 . BL.toStrict . encode
         unless esHideTiming $
             tellLn $ "# at " ++ formatISO8601Millis before
+        unless esHideCurlEquivalent $ tellLn $ execWriter $ do
+            tell "# curl"
+            case maybeContentType of
+                Nothing | httpVerbString == "GET" -> return ()
+                Just _  | httpVerbString == "POST" -> return ()
+                _ -> tell $ " -X" ++ httpVerbString
+            tell $ " " ++ absUri
+            case maybeContentType of
+                Nothing -> return ()
+                Just ct -> tell $ " -H 'Content-type: " ++ ct ++ "'"
+            when (bodyLength > 0) $ do
+                tell " --data-binary $'"
+                tell $ concatMap escapeShellQuoted $ concatMap (T.unpack . T.decodeUtf8) $ BL.toChunks $ B.toLazyByteString bodyBuilder
+                tell "'"
 
     response <- liftIO $ httpLbs req manager
     after <- liftIO getCurrentTime

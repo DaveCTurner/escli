@@ -7,10 +7,11 @@ import Data.Monoid
 import Network.URI
 
 data Config = Config
-    { esBaseURI        :: URI
-    , esHideTiming     :: Bool
-    , esHideHeadings   :: Bool
-    , esHideStatusCode :: Bool
+    { esBaseURI            :: URI
+    , esHideTiming         :: Bool
+    , esHideHeadings       :: Bool
+    , esHideStatusCode     :: Bool
+    , esHideCurlEquivalent :: Bool
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -40,6 +41,9 @@ configParser = Config
     <*> switch 
         (  long "hide-status"
         <> help "Hide HTTP status code")
+    <*> switch 
+        (  long "hide-curl-equivalent"
+        <> help "Hide `curl`-equivalent command")
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)
