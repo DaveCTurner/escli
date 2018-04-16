@@ -77,7 +77,8 @@ runCommand Config{..} manager ESCommand{..} = do
         [v] -> putStrLn $ prettyStringFromJson v
         _   -> forM_ cmdBody $ putStrLn . T.unpack . T.decodeUtf8 . BL.toStrict . encode
     before <- getCurrentTime
-    putStrLn $ "# at " ++ formatISO8601Millis before
+    unless esHideTiming $
+        putStrLn $ "# at " ++ formatISO8601Millis before
     putStrLn ""
 
     putStrLn $ "# " ++ replicate 40 '-'
@@ -97,8 +98,9 @@ runCommand Config{..} manager ESCommand{..} = do
         Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
             Nothing -> putStrLn $ "# Unknown content-type: " ++ show ct
             Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> putStrLn $ "# " ++ l
-    putStrLn $ "# at " ++ formatISO8601Millis after
-    putStrLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
+    unless esHideTiming $ do
+        putStrLn $ "# at " ++ formatISO8601Millis after
+        putStrLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
     putStrLn ""
 
 data BuilderWithLength = BuilderWithLength B.Builder !Int64

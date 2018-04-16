@@ -8,6 +8,7 @@ import Network.URI
 
 data Config = Config
     { esBaseURI :: URI
+    , esHideTiming :: Bool
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -28,6 +29,9 @@ configParser = Config
                 , uriFragment = ""
                 }
         <> metavar "ADDR")
+    <*> switch 
+        (  long "hide-timing"
+        <> help "Hide timing information")
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)
