@@ -34,6 +34,7 @@ main = withConfig $ \config -> do
     putStrLn $ "# Server URI: " ++ show (esBaseURI config)
     putStrLn $ ""
     manager <- newManager defaultManagerSettings
+      { managerResponseTimeout = responseTimeoutNone }
 
     runConduit
          $  sourceHandle stdin
