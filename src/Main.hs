@@ -111,7 +111,7 @@ runCommand Config{..} manager ESCommand{..} = do
                 Nothing | httpVerbString == "GET" -> return ()
                 Just _  | httpVerbString == "POST" -> return ()
                 _ -> tell $ " -X" ++ httpVerbString
-            tell $ " " ++ absUri
+            tell $ " '" ++ absUri ++ "'"
             case maybeContentType of
                 Nothing -> return ()
                 Just ct -> tell $ " -H 'Content-type: " ++ ct ++ "'"
