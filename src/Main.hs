@@ -33,7 +33,9 @@ import Data.String
 
 withMaybeLogFile :: Maybe FilePath -> ((B.ByteString -> IO ()) -> IO a) -> IO a
 withMaybeLogFile Nothing go = go (const $ return ())
-withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> go (B.hPutStr h)
+withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> do
+  hSetBuffering h NoBuffering
+  go (B.hPutStr h)
 
 main :: IO ()
 main = withConfig $ \config -> do
