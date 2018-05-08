@@ -14,6 +14,7 @@ data Config = Config
     , esHideCurlEquivalent :: Bool
     , esNoVerifyCert       :: Bool
     , esLogFile            :: Maybe FilePath
+    , esCredentials        :: Maybe (String, String)
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -53,6 +54,15 @@ configParser = Config
         (  long "log-file"
         <> help "File in which to record output"
         <> metavar "FILE"))
+    <*> optional ((,)
+        <$> strOption
+            (  long "username"
+            <> help "Elasticsearch username, for security-enabled clusters"
+            <> metavar "USERNAME")
+        <*> strOption
+            (  long "password"
+            <> help "Elasticsearch password, for security-enabled clusters"
+            <> metavar "PASSWORD"))
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)

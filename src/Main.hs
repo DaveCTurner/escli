@@ -84,7 +84,12 @@ runCommand Config{..} manager ESCommand{..} = do
                 [_] -> Just "application/json"
                 _   -> Just "application/x-ndjson"
 
-        req = initReq
+        withCredentials = maybe id applyCredentials esCredentials
+          where
+          applyCredentials (userString, passString) = applyBasicAuth (credFromString userString) (credFromString passString)
+          credFromString = T.encodeUtf8 . T.pack
+
+        req = withCredentials initReq
             { method = httpVerb
             , requestHeaders = case maybeContentType of
                 Nothing -> []
