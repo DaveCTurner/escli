@@ -16,6 +16,7 @@ import Data.Conduit.Attoparsec
 import Network.URI
 import Data.Maybe
 import Network.HTTP.Client
+import Network.HTTP.Client.TLS
 import Network.HTTP.Types.Header
 import Data.Aeson
 import qualified Data.ByteString as B
@@ -30,6 +31,7 @@ import Data.Time.ISO8601
 import Network.HTTP.Types.Status
 import Network.HTTP.Media
 import Data.String
+import Network.Connection
 
 withMaybeLogFile :: Maybe FilePath -> ((B.ByteString -> IO ()) -> IO a) -> IO a
 withMaybeLogFile Nothing go = go (const $ return ())
@@ -42,8 +44,9 @@ main = withConfig $ \config -> do
 
     putStrLn $ "# Server URI: " ++ show (esBaseURI config)
     putStrLn $ ""
-    manager <- newManager defaultManagerSettings
-      { managerResponseTimeout = responseTimeoutNone }
+
+    let httpClientSettings = mkManagerSettings (TLSSettingsSimple (esNoVerifyCert config) False False) Nothing
+    manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
     withMaybeLogFile (esLogFile config) $ \writeLog -> 
         runConduit

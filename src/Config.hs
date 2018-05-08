@@ -12,6 +12,7 @@ data Config = Config
     , esHideHeadings       :: Bool
     , esHideStatusCode     :: Bool
     , esHideCurlEquivalent :: Bool
+    , esNoVerifyCert       :: Bool
     , esLogFile            :: Maybe FilePath
     } deriving (Show, Eq)
 
@@ -45,6 +46,9 @@ configParser = Config
     <*> switch 
         (  long "hide-curl-equivalent"
         <> help "Hide `curl`-equivalent command")
+    <*> switch 
+        (  long "insecurely-bypass-certificate-verification"
+        <> help "Do not perform certificate verification")
     <*> optional (strOption
         (  long "log-file"
         <> help "File in which to record output"

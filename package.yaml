@@ -11,11 +11,13 @@ dependencies:
 - optparse-applicative
 - conduit
 - conduit-extra
+- connection
 - bytestring
 - aeson
 - attoparsec
 - text
 - http-client
+- http-client-tls
 - http-types
 - network-uri
 - aeson-pretty
