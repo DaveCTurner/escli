@@ -7,14 +7,15 @@ import Data.Monoid
 import Network.URI
 
 data Config = Config
-    { esBaseURI            :: URI
-    , esHideTiming         :: Bool
-    , esHideHeadings       :: Bool
-    , esHideStatusCode     :: Bool
-    , esHideCurlEquivalent :: Bool
-    , esNoVerifyCert       :: Bool
-    , esLogFile            :: Maybe FilePath
-    , esCredentials        :: Maybe (String, String)
+    { esBaseURI                 :: URI
+    , esHideTiming              :: Bool
+    , esHideHeadings            :: Bool
+    , esHideStatusCode          :: Bool
+    , esHideCurlEquivalent      :: Bool
+    , esHideDeprecationWarnings :: Bool
+    , esNoVerifyCert            :: Bool
+    , esLogFile                 :: Maybe FilePath
+    , esCredentials             :: Maybe (String, String)
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -47,6 +48,9 @@ configParser = Config
     <*> switch 
         (  long "hide-curl-equivalent"
         <> help "Hide `curl`-equivalent command")
+    <*> switch 
+        (  long "hide-deprecation-warnings"
+        <> help "Hide deprecation warnings")
     <*> switch 
         (  long "insecurely-bypass-certificate-verification"
         <> help "Do not perform certificate verification")

@@ -139,6 +139,10 @@ runCommand Config{..} manager ESCommand{..} = do
             tellLn $ "# " ++ show (statusCode    $ responseStatus response)
                     ++ " "  ++ T.unpack (T.decodeUtf8 $ statusMessage $ responseStatus response)
 
+        unless esHideDeprecationWarnings $
+            forM_ [ headerContent | (headerName, headerContent) <- responseHeaders response, headerName == "Warning" ] $ \headerContent ->
+                tellLn $ "# WARNING: " ++ (T.unpack $ T.decodeUtf8 headerContent)
+
         let linesFromJsonBody b = case (eitherDecode b :: Either String Value) of
                 Left er -> ["JSON parse error: " ++ show er, show b]
                 Right bv -> Prelude.lines $ prettyStringFromJson bv
@@ -149,6 +153,7 @@ runCommand Config{..} manager ESCommand{..} = do
             Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
                 Nothing -> tellLn $ "# Unknown content-type: " ++ show ct
                 Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
+
         unless esHideTiming $ do
             tellLn $ "# at " ++ formatISO8601Millis after
             tellLn $ "# (" ++ show (diffUTCTime after before) ++ " elapsed)"
