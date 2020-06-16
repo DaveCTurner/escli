@@ -3,7 +3,6 @@
 module Config (Config(..), withConfig) where
 
 import Options.Applicative
-import Data.Monoid
 import Network.URI
 
 data Config = Config

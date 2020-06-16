@@ -160,10 +160,12 @@ runCommand Config{..} manager ESCommand{..} = do
 
 data BuilderWithLength = BuilderWithLength B.Builder !Int64
 
+instance Semigroup BuilderWithLength where
+    BuilderWithLength b1 l1 <> BuilderWithLength b2 l2
+        = BuilderWithLength (b1 <> b2) (l1 + l2)
+
 instance Monoid BuilderWithLength where
     mempty = BuilderWithLength mempty 0
-    mappend (BuilderWithLength b1 l1) (BuilderWithLength b2 l2)
-        = BuilderWithLength (b1 <> b2) (l1 + l2)
 
 jsonWithLength :: ToJSON a => a -> BuilderWithLength
 jsonWithLength v = BuilderWithLength (B.lazyByteString bs) (BL.length bs)
