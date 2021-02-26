@@ -4,34 +4,40 @@
 
 module Main where
 
-import System.IO
+import Config
 import Control.Monad
 import Control.Monad.Writer
-import Data.Conduit
-import qualified Data.Conduit.List as DCL
-import Data.Conduit.Binary
-import Config
-import ESCommand
-import Data.Conduit.Attoparsec
-import Network.URI
-import Data.Maybe
-import Network.HTTP.Client
-import Network.HTTP.Client.TLS
-import Network.HTTP.Types.Header
 import Data.Aeson
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Builder as B
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Data.ByteString.Lazy as BL
+import Data.Conduit
+import Data.Conduit.Attoparsec
+import Data.Conduit.Binary
+import Data.Default.Class
 import Data.Int
-import qualified Data.Aeson.Encode.Pretty
+import Data.Maybe
+import Data.String
 import Data.Time
 import Data.Time.ISO8601
-import Network.HTTP.Types.Status
-import Network.HTTP.Media
-import Data.String
+import Data.X509.CertificateStore
+import Data.X509.Validation
+import ESCommand
 import Network.Connection
+import Network.HTTP.Client
+import Network.HTTP.Client.TLS
+import Network.HTTP.Media
+import Network.HTTP.Types.Header
+import Network.HTTP.Types.Status
+import Network.TLS
+import Network.TLS.Extra.Cipher
+import Network.URI
+import System.IO
+import System.X509
+import qualified Data.Aeson.Encode.Pretty
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Conduit.List as DCL
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 
 withMaybeLogFile :: Maybe FilePath -> ((B.ByteString -> IO ()) -> IO a) -> IO a
 withMaybeLogFile Nothing go = go (const $ return ())
@@ -45,10 +51,30 @@ main = withConfig $ \config -> do
     putStrLn $ "# Server URI: " ++ show (esBaseURI config)
     putStrLn $ ""
 
-    let httpClientSettings = mkManagerSettings (TLSSettingsSimple (esNoVerifyCert config) False False) Nothing
+    certStore <- case esCertStore config of
+        Nothing -> getSystemCertificateStore
+        Just certStorePath -> do
+            maybeCertStore <- readCertificateStore certStorePath
+            case maybeCertStore of
+                Just certStore -> return certStore
+                Nothing -> error $ "failed to read certificate store from " ++ certStorePath
+
+    let hostName = fromMaybe "" $ fmap uriRegName $ uriAuthority $ esBaseURI config
+        clientParams = (defaultParamsClient hostName B.empty)
+            { clientSupported = def
+                { supportedCiphers = ciphersuite_default
+                }
+            , clientShared = def
+                { sharedCAStore = certStore
+                }
+            , clientHooks = def
+                { onServerCertificate = if esNoVerifyCert config then \_ _ _ _ -> return [] else validateDefault
+                }
+            }
+        httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
     manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
-    withMaybeLogFile (esLogFile config) $ \writeLog -> 
+    withMaybeLogFile (esLogFile config) $ \writeLog ->
         runConduit
              $  sourceHandle stdin
              .| conduitParser esCommand

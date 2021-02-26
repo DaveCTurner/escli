@@ -14,6 +14,7 @@ data Config = Config
     , esHideDeprecationWarnings :: Bool
     , esNoVerifyCert            :: Bool
     , esLogFile                 :: Maybe FilePath
+    , esCertStore               :: Maybe FilePath
     , esCredentials             :: Maybe (String, String)
     } deriving (Show, Eq)
 
@@ -56,6 +57,10 @@ configParser = Config
     <*> optional (strOption
         (  long "log-file"
         <> help "File in which to record output"
+        <> metavar "FILE"))
+    <*> optional (strOption
+        (  long "certificate-store"
+        <> help "Location of certificate store"
         <> metavar "FILE"))
     <*> optional ((,)
         <$> strOption

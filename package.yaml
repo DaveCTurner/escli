@@ -8,23 +8,28 @@ copyright:           "2018 Author name here"
 
 dependencies:
 - base >= 4.7 && < 5
-- optparse-applicative
+- aeson
+- aeson-pretty
+- attoparsec
+- bytestring
 - conduit
 - conduit-extra
 - connection
-- bytestring
-- aeson
-- attoparsec
-- text
+- data-default-class
 - http-client
 - http-client-tls
-- http-types
-- network-uri
-- aeson-pretty
-- iso8601-time
-- time
 - http-media
+- http-types
+- iso8601-time
 - mtl
+- network-uri
+- optparse-applicative
+- text
+- time
+- tls
+- x509-store
+- x509-system
+- x509-validation
 
 executables:
   escli:
