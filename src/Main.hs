@@ -46,12 +46,12 @@ withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> do
   go (B.hPutStr h)
 
 main :: IO ()
-main = withConfig $ \config -> do
+main = withConfig $ \config@Config{esGeneralConfig=GeneralConfig{..},..} -> do
 
-    putStrLn $ "# Server URI: " ++ show (esBaseURI config)
+    putStrLn $ "# Server URI: " ++ show esBaseURI
     putStrLn $ ""
 
-    certStore <- case esCertStore config of
+    certStore <- case esCertStore of
         Nothing -> getSystemCertificateStore
         Just certStorePath -> do
             maybeCertStore <- readCertificateStore certStorePath
@@ -59,7 +59,7 @@ main = withConfig $ \config -> do
                 Just certStore -> return certStore
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
-    let hostName = fromMaybe "" $ fmap uriRegName $ uriAuthority $ esBaseURI config
+    let hostName = fromMaybe "" $ fmap uriRegName $ uriAuthority esBaseURI
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
                 { supportedCiphers = ciphersuite_default
@@ -68,13 +68,13 @@ main = withConfig $ \config -> do
                 { sharedCAStore = certStore
                 }
             , clientHooks = def
-                { onServerCertificate = if esNoVerifyCert config then \_ _ _ _ -> return [] else validateDefault
+                { onServerCertificate = if esNoVerifyCert then \_ _ _ _ -> return [] else validateDefault
                 }
             }
         httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
     manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
-    withMaybeLogFile (esLogFile config) $ \writeLog ->
+    withMaybeLogFile esLogFile $ \writeLog ->
         runConduit
              $  sourceHandle stdin
              .| conduitParser esCommand
@@ -99,7 +99,7 @@ escapeShellQuoted c
     | otherwise = [c]
 
 runCommand :: Config -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
-runCommand Config{..} manager ESCommand{..} = do
+runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = do
     let absUri = maybe (error "Bad URI") (show . (`relativeTo` esBaseURI)) (parseURIReference httpPath)
         initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
 

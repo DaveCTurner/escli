@@ -1,20 +1,49 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Config (Config(..), withConfig) where
+module Config (Config(..), GeneralConfig(..), withConfig) where
 
 import Options.Applicative
 import Network.URI
 
-data Config = Config
-    { esBaseURI                 :: URI
-    , esHideTiming              :: Bool
+data GeneralConfig = GeneralConfig
+    { esHideTiming              :: Bool
     , esHideHeadings            :: Bool
     , esHideStatusCode          :: Bool
     , esHideCurlEquivalent      :: Bool
     , esShowCurlPassword        :: Bool
     , esHideDeprecationWarnings :: Bool
-    , esNoVerifyCert            :: Bool
     , esLogFile                 :: Maybe FilePath
+    } deriving (Show, Eq)
+
+generalConfigParser :: Parser GeneralConfig
+generalConfigParser = GeneralConfig
+    <$> switch
+        (  long "hide-timing"
+        <> help "Hide timing information")
+    <*> switch
+        (  long "hide-headings"
+        <> help "Hide request/response headings")
+    <*> switch
+        (  long "hide-status"
+        <> help "Hide HTTP status code")
+    <*> switch
+        (  long "hide-curl-equivalent"
+        <> help "Hide `curl`-equivalent command")
+    <*> switch
+        (  long "show-curl-password"
+        <> help "Show password in `curl`-equivalent command")
+    <*> switch
+        (  long "hide-deprecation-warnings"
+        <> help "Hide deprecation warnings")
+    <*> optional (strOption
+        (  long "log-file"
+        <> help "File in which to record output"
+        <> metavar "FILE"))
+
+data Config = Config
+    { esBaseURI                 :: URI
+    , esGeneralConfig           :: GeneralConfig
+    , esNoVerifyCert            :: Bool
     , esCertStore               :: Maybe FilePath
     , esCredentials             :: Maybe (String, String)
     } deriving (Show, Eq)
@@ -37,31 +66,10 @@ configParser = Config
                 , uriFragment = ""
                 }
         <> metavar "ADDR")
-    <*> switch
-        (  long "hide-timing"
-        <> help "Hide timing information")
-    <*> switch
-        (  long "hide-headings"
-        <> help "Hide request/response headings")
-    <*> switch
-        (  long "hide-status"
-        <> help "Hide HTTP status code")
-    <*> switch
-        (  long "hide-curl-equivalent"
-        <> help "Hide `curl`-equivalent command")
-    <*> switch
-        (  long "show-curl-password"
-        <> help "Show password in `curl`-equivalent command")
-    <*> switch
-        (  long "hide-deprecation-warnings"
-        <> help "Hide deprecation warnings")
+    <*> generalConfigParser
     <*> switch
         (  long "insecurely-bypass-certificate-verification"
         <> help "Do not perform certificate verification")
-    <*> optional (strOption
-        (  long "log-file"
-        <> help "File in which to record output"
-        <> metavar "FILE"))
     <*> optional (strOption
         (  long "certificate-store"
         <> help "Location of certificate store"
