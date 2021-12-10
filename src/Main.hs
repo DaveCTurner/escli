@@ -141,7 +141,7 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
         unless esHideTiming $
             tellLn $ "# at " ++ formatISO8601Millis before
         unless esHideCurlEquivalent $ tellLn $ execWriter $ do
-            tell "# curl"
+            tell "# curl --compressed"
             case esCertificateVerificationConfig of
                 NoCertificateVerificationConfig                   -> tell " -k"
                 CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
