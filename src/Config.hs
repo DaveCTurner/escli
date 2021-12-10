@@ -1,6 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Config (Config(..), GeneralConfig(..), CertificateVerificationConfig(..), CredentialsConfig(..), withConfig) where
+module Config
+    ( Config(..)
+    , GeneralConfig(..)
+    , CertificateVerificationConfig(..)
+    , CredentialsConfig(..)
+    , ConnectionConfig(..)
+    , withConfig
+    ) where
 
 import Options.Applicative
 import Network.URI
@@ -81,15 +88,13 @@ credentialsConfigParser
             <> metavar "ENVVAR"))
     <|> pure NoCredentials
 
-data Config = Config
+data ConnectionConfig = ConnectionConfig
     { esBaseURI                       :: URI
     , esCredentialsConfig             :: CredentialsConfig
-    , esGeneralConfig                 :: GeneralConfig
-    , esCertificateVerificationConfig :: CertificateVerificationConfig
     } deriving (Show, Eq)
 
-configParser :: Parser Config
-configParser = Config
+connectionConfigParser :: Parser ConnectionConfig
+connectionConfigParser = ConnectionConfig
     <$> option (maybeReader parseAbsoluteURI)
         (  long "server"
         <> help "Base HTTP URI of the Elasticsearch server"
@@ -107,6 +112,16 @@ configParser = Config
                 }
         <> metavar "ADDR")
     <*> credentialsConfigParser
+
+data Config = Config
+    { esConnectionConfig              :: ConnectionConfig
+    , esGeneralConfig                 :: GeneralConfig
+    , esCertificateVerificationConfig :: CertificateVerificationConfig
+    } deriving (Show, Eq)
+
+configParser :: Parser Config
+configParser = Config
+    <$> connectionConfigParser
     <*> generalConfigParser
     <*> certificateVerificationConfigParser
 

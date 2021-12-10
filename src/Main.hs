@@ -47,7 +47,10 @@ withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> do
   go (B.hPutStr h)
 
 main :: IO ()
-main = withConfig $ \config@Config{esGeneralConfig=GeneralConfig{..},..} -> do
+main = withConfig $ \config@Config
+    { esGeneralConfig    = GeneralConfig{..}
+    , esConnectionConfig = ConnectionConfig{..}
+    , .. } -> do
 
     putStrLn $ "# Server URI: " ++ show esBaseURI
     putStrLn $ ""
@@ -115,7 +118,16 @@ escapeShellQuoted c
     | otherwise = [c]
 
 runCommand :: Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
-runCommand Config{esGeneralConfig=GeneralConfig{..},..} applyCredentials manager ESCommand{..} = do
+runCommand
+    Config
+        { esGeneralConfig    = GeneralConfig{..}
+        , esConnectionConfig = ConnectionConfig{..}
+        , ..}
+    applyCredentials
+    manager
+    ESCommand{..}
+
+    = do
 
     let absUri = maybe (error "Bad URI") (show . (`relativeTo` esBaseURI)) (parseURIReference httpPath)
         initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
