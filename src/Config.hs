@@ -37,25 +37,25 @@ configParser = Config
                 , uriFragment = ""
                 }
         <> metavar "ADDR")
-    <*> switch 
+    <*> switch
         (  long "hide-timing"
         <> help "Hide timing information")
-    <*> switch 
+    <*> switch
         (  long "hide-headings"
         <> help "Hide request/response headings")
-    <*> switch 
+    <*> switch
         (  long "hide-status"
         <> help "Hide HTTP status code")
-    <*> switch 
+    <*> switch
         (  long "hide-curl-equivalent"
         <> help "Hide `curl`-equivalent command")
-    <*> switch 
+    <*> switch
         (  long "show-curl-password"
         <> help "Show password in `curl`-equivalent command")
     <*> switch
         (  long "hide-deprecation-warnings"
         <> help "Hide deprecation warnings")
-    <*> switch 
+    <*> switch
         (  long "insecurely-bypass-certificate-verification"
         <> help "Do not perform certificate verification")
     <*> optional (strOption
