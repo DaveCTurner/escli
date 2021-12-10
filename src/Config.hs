@@ -60,6 +60,7 @@ generalConfigParser = GeneralConfig
 data CredentialsConfig
     = NoCredentials
     | BasicCredentials  String String
+    | ApiKeyCredentials String
     deriving (Show, Eq)
 
 credentialsConfigParser :: Parser CredentialsConfig
@@ -73,6 +74,11 @@ credentialsConfigParser
             (  long "password"
             <> help "Elasticsearch password, for security-enabled clusters"
             <> metavar "PASSWORD"))
+    <|> (ApiKeyCredentials
+        <$> strOption
+            (  long "apikey"
+            <> help "Environment variable holding API key"
+            <> metavar "ENVVAR"))
     <|> pure NoCredentials
 
 data Config = Config

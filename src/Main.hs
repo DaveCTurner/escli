@@ -31,6 +31,7 @@ import Network.TLS.Extra.Cipher
 import Network.URI
 import System.IO
 import System.X509
+import System.Environment (getEnv)
 import qualified Data.Aeson.Encode.Pretty
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
@@ -77,12 +78,24 @@ main = withConfig $ \config@Config{esGeneralConfig=GeneralConfig{..},..} -> do
 
     manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
+    applyCredentials <- let credFromString = T.encodeUtf8 . T.pack in case esCredentialsConfig of
+        NoCredentials                          -> return id
+        BasicCredentials userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
+        ApiKeyCredentials apiKeyEnvVar         -> do
+            apiKey <- liftIO $ getEnv apiKeyEnvVar
+            return $ \req -> req
+                { requestHeaders
+                    = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
+                    : ("X-Management-Request", "true")
+                    : requestHeaders req
+                }
+
     withMaybeLogFile esLogFile $ \writeLog ->
         runConduit
              $  sourceHandle stdin
              .| conduitParser esCommand
              .| DCL.map snd
-             .| awaitForever (runCommand config manager)
+             .| awaitForever (runCommand config applyCredentials manager)
              .| awaitForever (\logEntry -> liftIO $ do
                     putStrLn logEntry
                     writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
@@ -101,8 +114,9 @@ escapeShellQuoted c
     | c == '\'' = "\\'"
     | otherwise = [c]
 
-runCommand :: Config -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
-runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = do
+runCommand :: Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
+runCommand Config{esGeneralConfig=GeneralConfig{..},..} applyCredentials manager ESCommand{..} = do
+
     let absUri = maybe (error "Bad URI") (show . (`relativeTo` esBaseURI)) (parseURIReference httpPath)
         initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
 
@@ -113,12 +127,7 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
                 [_] -> [(hContentType, "application/json")]
                 _   -> [(hContentType, "application/x-ndjson")]
 
-        withCredentials = case esCredentialsConfig of
-            NoCredentials -> id
-            BasicCredentials userString passString -> applyBasicAuth (credFromString userString) (credFromString passString)
-                where credFromString = T.encodeUtf8 . T.pack
-
-        req = withCredentials initReq
+        req = applyCredentials initReq
             { method = httpVerb
             , requestHeaders = maybeContentTypeHeader
             , requestBody = RequestBodyBuilder bodyLength bodyBuilder
@@ -147,8 +156,9 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
                 CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
                 _                                                 -> return ()
             case esCredentialsConfig of
-                NoCredentials -> return ()
+                NoCredentials                          -> return ()
                 BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
+                ApiKeyCredentials apiKeyEnvVar         -> tell $ " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
             case maybeContentTypeHeader of
                 []    | httpVerbString == "GET"  -> return ()
                 (_:_) | httpVerbString == "POST" -> return ()
