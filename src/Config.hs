@@ -19,6 +19,7 @@ data GeneralConfig = GeneralConfig
     , esHideCurlEquivalent      :: Bool
     , esShowCurlPassword        :: Bool
     , esHideDeprecationWarnings :: Bool
+    , esMaxResponseLines        :: Int
     , esLogFile                 :: Maybe FilePath
     } deriving (Show, Eq)
 
@@ -59,6 +60,15 @@ generalConfigParser = GeneralConfig
     <*> switch
         (  long "hide-deprecation-warnings"
         <> help "Hide deprecation warnings")
+    <*> (flag' (-1)
+            (  long "no-max-response-lines"
+            <> help "Show an unlimited number of lines of response")
+        <|> option auto
+            (  long "max-response-lines"
+            <> help "Maximum number of lines of response to show"
+            <> metavar "LINES"
+            <> showDefault
+            <> value 40))
     <*> optional (strOption
         (  long "log-file"
         <> help "File in which to record output"

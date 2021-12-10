@@ -204,11 +204,16 @@ runCommand
                 Right bv -> Prelude.lines $ prettyStringFromJson bv
             linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
 
+            truncateBody = if esMaxResponseLines < 0 then id else go esMaxResponseLines
+                where go _ [] = []
+                      go linesRemaining (l:ls) | linesRemaining > 0 = l : go (linesRemaining - 1) ls
+                      go _ remainder = ["... (" ++ show (length remainder) ++ " lines skipped)"]
+
         case lookup hContentType (responseHeaders response) of
             Nothing -> tellLn "# No content-type returned"
             Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
                 Nothing -> tellLn $ "# Unknown content-type: " ++ show ct
-                Just linesFn -> forM_ (linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
+                Just linesFn -> forM_ (truncateBody $ linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
 
         unless esHideTiming $ do
             tellLn $ "# at " ++ formatISO8601Millis after
