@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TupleSections #-}
 
 module Main where
 
@@ -51,15 +52,17 @@ main = withConfig $ \config@Config{esGeneralConfig=GeneralConfig{..},..} -> do
     putStrLn $ "# Server URI: " ++ show esBaseURI
     putStrLn $ ""
 
-    certStore <- case esCertStore of
-        Nothing -> getSystemCertificateStore
-        Just certStorePath -> do
+    (certStore, verifyCert) <- case esCertificateVerificationConfig of
+        DefaultCertificateVerificationConfig -> (,True)  <$> getSystemCertificateStore
+        NoCertificateVerificationConfig      -> (,False) <$> getSystemCertificateStore
+        CustomCertificateVerificationConfig certStorePath -> do
             maybeCertStore <- readCertificateStore certStorePath
             case maybeCertStore of
-                Just certStore -> return certStore
+                Just certStore -> return (certStore, True)
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
     let hostName = fromMaybe "" $ fmap uriRegName $ uriAuthority esBaseURI
+
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
                 { supportedCiphers = ciphersuite_default
@@ -68,10 +71,11 @@ main = withConfig $ \config@Config{esGeneralConfig=GeneralConfig{..},..} -> do
                 { sharedCAStore = certStore
                 }
             , clientHooks = def
-                { onServerCertificate = if esNoVerifyCert then \_ _ _ _ -> return [] else validateDefault
+                { onServerCertificate = if verifyCert then validateDefault else \_ _ _ _ -> return []
                 }
             }
         httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
+
     manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
     withMaybeLogFile esLogFile $ \writeLog ->
@@ -141,10 +145,10 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
             tellLn $ "# at " ++ formatISO8601Millis before
         unless esHideCurlEquivalent $ tellLn $ execWriter $ do
             tell "# curl"
-            when esNoVerifyCert $ tell " -k"
-            case esCertStore of
-                Nothing -> return ()
-                Just certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
+            case esCertificateVerificationConfig of
+                NoCertificateVerificationConfig                   -> tell " -k"
+                CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
+                _                                                 -> return ()
             case esCredentials of
                 Nothing -> return ()
                 Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"

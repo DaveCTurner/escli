@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Config (Config(..), GeneralConfig(..), withConfig) where
+module Config (Config(..), GeneralConfig(..), CertificateVerificationConfig(..), withConfig) where
 
 import Options.Applicative
 import Network.URI
@@ -14,6 +14,23 @@ data GeneralConfig = GeneralConfig
     , esHideDeprecationWarnings :: Bool
     , esLogFile                 :: Maybe FilePath
     } deriving (Show, Eq)
+
+data CertificateVerificationConfig
+    = DefaultCertificateVerificationConfig
+    | NoCertificateVerificationConfig
+    | CustomCertificateVerificationConfig FilePath
+    deriving (Show, Eq)
+
+certificateVerificationConfigParser :: Parser CertificateVerificationConfig
+certificateVerificationConfigParser
+   = (CustomCertificateVerificationConfig <$> strOption
+        (  long "certificate-store"
+        <> help "Location of certificate store"
+        <> metavar "FILE"))
+   <|> (flag' NoCertificateVerificationConfig
+        (  long "insecurely-bypass-certificate-verification"
+        <> help "Do not perform certificate verification"))
+   <|> pure DefaultCertificateVerificationConfig
 
 generalConfigParser :: Parser GeneralConfig
 generalConfigParser = GeneralConfig
@@ -41,11 +58,10 @@ generalConfigParser = GeneralConfig
         <> metavar "FILE"))
 
 data Config = Config
-    { esBaseURI                 :: URI
-    , esGeneralConfig           :: GeneralConfig
-    , esNoVerifyCert            :: Bool
-    , esCertStore               :: Maybe FilePath
-    , esCredentials             :: Maybe (String, String)
+    { esBaseURI                       :: URI
+    , esGeneralConfig                 :: GeneralConfig
+    , esCertificateVerificationConfig :: CertificateVerificationConfig
+    , esCredentials                   :: Maybe (String, String)
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -67,13 +83,7 @@ configParser = Config
                 }
         <> metavar "ADDR")
     <*> generalConfigParser
-    <*> switch
-        (  long "insecurely-bypass-certificate-verification"
-        <> help "Do not perform certificate verification")
-    <*> optional (strOption
-        (  long "certificate-store"
-        <> help "Location of certificate store"
-        <> metavar "FILE"))
+    <*> certificateVerificationConfigParser
     <*> optional ((,)
         <$> strOption
             (  long "username"
