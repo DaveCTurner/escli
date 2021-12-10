@@ -11,6 +11,7 @@ data Config = Config
     , esHideHeadings            :: Bool
     , esHideStatusCode          :: Bool
     , esHideCurlEquivalent      :: Bool
+    , esShowCurlPassword        :: Bool
     , esHideDeprecationWarnings :: Bool
     , esNoVerifyCert            :: Bool
     , esLogFile                 :: Maybe FilePath
@@ -49,6 +50,9 @@ configParser = Config
         (  long "hide-curl-equivalent"
         <> help "Hide `curl`-equivalent command")
     <*> switch 
+        (  long "show-curl-password"
+        <> help "Show password in `curl`-equivalent command")
+    <*> switch
         (  long "hide-deprecation-warnings"
         <> help "Hide deprecation warnings")
     <*> switch 

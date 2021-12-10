@@ -147,7 +147,7 @@ runCommand Config{..} manager ESCommand{..} = do
                 Just certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
             case esCredentials of
                 Nothing -> return ()
-                Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ passString ++ "'"
+                Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
             case maybeContentType of
                 Nothing | httpVerbString == "GET" -> return ()
                 Just _  | httpVerbString == "POST" -> return ()
