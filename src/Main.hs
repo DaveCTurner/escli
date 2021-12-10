@@ -141,6 +141,13 @@ runCommand Config{..} manager ESCommand{..} = do
             tellLn $ "# at " ++ formatISO8601Millis before
         unless esHideCurlEquivalent $ tellLn $ execWriter $ do
             tell "# curl"
+            when esNoVerifyCert $ tell " -k"
+            case esCertStore of
+                Nothing -> return ()
+                Just certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
+            case esCredentials of
+                Nothing -> return ()
+                Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ passString ++ "'"
             case maybeContentType of
                 Nothing | httpVerbString == "GET" -> return ()
                 Just _  | httpVerbString == "POST" -> return ()
