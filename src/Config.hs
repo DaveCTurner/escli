@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Config (Config(..), GeneralConfig(..), CertificateVerificationConfig(..), withConfig) where
+module Config (Config(..), GeneralConfig(..), CertificateVerificationConfig(..), CredentialsConfig(..), withConfig) where
 
 import Options.Applicative
 import Network.URI
@@ -57,11 +57,29 @@ generalConfigParser = GeneralConfig
         <> help "File in which to record output"
         <> metavar "FILE"))
 
+data CredentialsConfig
+    = NoCredentials
+    | BasicCredentials  String String
+    deriving (Show, Eq)
+
+credentialsConfigParser :: Parser CredentialsConfig
+credentialsConfigParser
+    = (BasicCredentials
+        <$> strOption
+            (  long "username"
+            <> help "Elasticsearch username, for security-enabled clusters"
+            <> metavar "USERNAME")
+        <*> strOption
+            (  long "password"
+            <> help "Elasticsearch password, for security-enabled clusters"
+            <> metavar "PASSWORD"))
+    <|> pure NoCredentials
+
 data Config = Config
     { esBaseURI                       :: URI
+    , esCredentialsConfig             :: CredentialsConfig
     , esGeneralConfig                 :: GeneralConfig
     , esCertificateVerificationConfig :: CertificateVerificationConfig
-    , esCredentials                   :: Maybe (String, String)
     } deriving (Show, Eq)
 
 configParser :: Parser Config
@@ -82,17 +100,9 @@ configParser = Config
                 , uriFragment = ""
                 }
         <> metavar "ADDR")
+    <*> credentialsConfigParser
     <*> generalConfigParser
     <*> certificateVerificationConfigParser
-    <*> optional ((,)
-        <$> strOption
-            (  long "username"
-            <> help "Elasticsearch username, for security-enabled clusters"
-            <> metavar "USERNAME")
-        <*> strOption
-            (  long "password"
-            <> help "Elasticsearch password, for security-enabled clusters"
-            <> metavar "PASSWORD"))
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)

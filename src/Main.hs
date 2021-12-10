@@ -113,10 +113,10 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
                 [_] -> [(hContentType, "application/json")]
                 _   -> [(hContentType, "application/x-ndjson")]
 
-        withCredentials = maybe id applyCredentials esCredentials
-          where
-          applyCredentials (userString, passString) = applyBasicAuth (credFromString userString) (credFromString passString)
-          credFromString = T.encodeUtf8 . T.pack
+        withCredentials = case esCredentialsConfig of
+            NoCredentials -> id
+            BasicCredentials userString passString -> applyBasicAuth (credFromString userString) (credFromString passString)
+                where credFromString = T.encodeUtf8 . T.pack
 
         req = withCredentials initReq
             { method = httpVerb
@@ -146,9 +146,9 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
                 NoCertificateVerificationConfig                   -> tell " -k"
                 CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
                 _                                                 -> return ()
-            case esCredentials of
-                Nothing -> return ()
-                Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
+            case esCredentialsConfig of
+                NoCredentials -> return ()
+                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
             case maybeContentTypeHeader of
                 []    | httpVerbString == "GET"  -> return ()
                 (_:_) | httpVerbString == "POST" -> return ()
