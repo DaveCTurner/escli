@@ -15,7 +15,6 @@ import Data.Conduit.Binary
 import Data.Default.Class
 import Data.Int
 import Data.Maybe
-import Data.String
 import Data.Time
 import Data.Time.ISO8601
 import Data.X509.CertificateStore
@@ -109,10 +108,10 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
 
         BuilderWithLength bodyBuilder bodyLength = builderFromBody cmdBody
 
-        maybeContentType = case cmdBody of
-                []  -> Nothing
-                [_] -> Just "application/json"
-                _   -> Just "application/x-ndjson"
+        maybeContentTypeHeader = case cmdBody of
+                []  -> []
+                [_] -> [(hContentType, "application/json")]
+                _   -> [(hContentType, "application/x-ndjson")]
 
         withCredentials = maybe id applyCredentials esCredentials
           where
@@ -121,9 +120,7 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
 
         req = withCredentials initReq
             { method = httpVerb
-            , requestHeaders = case maybeContentType of
-                Nothing -> []
-                Just ct -> [(hContentType, fromString ct)]
+            , requestHeaders = maybeContentTypeHeader
             , requestBody = RequestBodyBuilder bodyLength bodyBuilder
             }
 
@@ -152,14 +149,14 @@ runCommand Config{esGeneralConfig=GeneralConfig{..},..} manager ESCommand{..} = 
             case esCredentials of
                 Nothing -> return ()
                 Just (userString, passString) -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
-            case maybeContentType of
-                Nothing | httpVerbString == "GET" -> return ()
-                Just _  | httpVerbString == "POST" -> return ()
-                _ -> tell $ " -X" ++ httpVerbString
+            case maybeContentTypeHeader of
+                []    | httpVerbString == "GET"  -> return ()
+                (_:_) | httpVerbString == "POST" -> return ()
+                _                                -> tell $ " -X" ++ httpVerbString
             tell $ " '" ++ absUri ++ "'"
-            case maybeContentType of
-                Nothing -> return ()
-                Just ct -> tell $ " -H 'Content-type: " ++ ct ++ "'"
+            case maybeContentTypeHeader of
+                [] -> return ()
+                ((_, ct):_) -> tell $ " -H 'Content-type: " ++ T.unpack (T.decodeUtf8 ct) ++ "'"
             when (bodyLength > 0) $ do
                 tell " --data-binary $'"
                 tell $ concatMap escapeShellQuoted $ concatMap (T.unpack . T.decodeUtf8) $ BL.toChunks $ B.toLazyByteString bodyBuilder
