@@ -113,6 +113,30 @@ connectionConfigParser = ConnectionConfig
         <> metavar "ADDR")
     <*> credentialsConfigParser
 
+cloudConnectionConfigParser :: Parser ConnectionConfig
+cloudConnectionConfigParser = buildCloudConnectionConfig
+    <$> strOption
+        (  long "cloud-region"
+        <> help "Cloud region name"
+        <> metavar "REGION")
+    <*> strOption
+        (  long "cluster-id"
+        <> help "Cloud cluster ID"
+        <> metavar "CLUSTER")
+    where
+    buildCloudConnectionConfig cloudRegion clusterId = case parseAbsoluteURI
+            $ "https://adminconsole.found.no/api/v1/regions/"
+            ++ cloudRegion
+            ++ "/clusters/elasticsearch/"
+            ++ clusterId
+            ++ "/proxy/"
+            of
+            Nothing -> error "could not construct cloud URI"
+            Just uri -> ConnectionConfig
+                { esBaseURI = uri
+                , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
+                }
+
 data Config = Config
     { esConnectionConfig              :: ConnectionConfig
     , esGeneralConfig                 :: GeneralConfig
@@ -121,7 +145,7 @@ data Config = Config
 
 configParser :: Parser Config
 configParser = Config
-    <$> connectionConfigParser
+    <$> (connectionConfigParser <|> cloudConnectionConfigParser)
     <*> generalConfigParser
     <*> certificateVerificationConfigParser
 
