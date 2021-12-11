@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Config
     ( Config(..)
@@ -11,6 +12,14 @@ module Config
 
 import Options.Applicative
 import Network.URI
+import System.FilePath
+import System.Directory
+import Data.Aeson
+import qualified Data.Aeson.Types as Aeson
+import Control.Monad
+
+configFileName :: FilePath
+configFileName = "escli_config.json"
 
 data GeneralConfig = GeneralConfig
     { esHideTiming              :: Bool
@@ -19,6 +28,7 @@ data GeneralConfig = GeneralConfig
     , esHideCurlEquivalent      :: Bool
     , esShowCurlPassword        :: Bool
     , esHideDeprecationWarnings :: Bool
+    , esSaveConnectionConfig    :: Bool
     , esMaxResponseLines        :: Int
     , esLogFile                 :: Maybe FilePath
     } deriving (Show, Eq)
@@ -60,6 +70,9 @@ generalConfigParser = GeneralConfig
     <*> switch
         (  long "hide-deprecation-warnings"
         <> help "Hide deprecation warnings")
+    <*> switch
+        (  long "save"
+        <> help ("Save connection config to '" ++ configFileName ++ "' for future invocations"))
     <*> (flag' (-1)
             (  long "no-max-response-lines"
             <> help "Show an unlimited number of lines of response")
@@ -98,10 +111,34 @@ credentialsConfigParser
             <> metavar "ENVVAR"))
     <|> pure NoCredentials
 
+instance FromJSON CredentialsConfig where
+    parseJSON = withObject "CredentialsConfig" $ \v -> do
+        credType <- v .: "type"
+        case credType of
+            "apikey" -> ApiKeyCredentials <$> v .: "var"
+            _        -> fail $ "unknown credentials type '" ++ credType ++ "'"
+
+instance ToJSON CredentialsConfig where
+    toJSON (ApiKeyCredentials var) = object ["type" .= ("apikey" :: String), "var" .= var]
+    toJSON v = error $ "saving credentials " ++ show v ++ " not supported"
+
 data ConnectionConfig = ConnectionConfig
     { esBaseURI                       :: URI
     , esCredentialsConfig             :: CredentialsConfig
     } deriving (Show, Eq)
+
+defaultBaseUri :: URI
+defaultBaseUri = URI
+    { uriScheme = "http:"
+    , uriAuthority = Just URIAuth
+        { uriUserInfo = ""
+        , uriRegName = "localhost"
+        , uriPort    = ":9200"
+        }
+    , uriPath = ""
+    , uriQuery = ""
+    , uriFragment = ""
+    }
 
 connectionConfigParser :: Parser ConnectionConfig
 connectionConfigParser = ConnectionConfig
@@ -109,17 +146,7 @@ connectionConfigParser = ConnectionConfig
         (  long "server"
         <> help "Base HTTP URI of the Elasticsearch server"
         <> showDefault
-        <> value URI
-                { uriScheme = "http:"
-                , uriAuthority = Just URIAuth
-                    { uriUserInfo = ""
-                    , uriRegName = "localhost"
-                    , uriPort    = ":9200"
-                    }
-                , uriPath = ""
-                , uriQuery = ""
-                , uriFragment = ""
-                }
+        <> value defaultBaseUri
         <> metavar "ADDR")
     <*> credentialsConfigParser
 
@@ -147,6 +174,19 @@ cloudConnectionConfigParser = buildCloudConnectionConfig
                 , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
                 }
 
+instance FromJSON ConnectionConfig where
+    parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig
+        <$> (uriFromString =<< (v .: "baseuri"))
+        <*> (v .: "credentials")
+        where
+            uriFromString :: String -> Aeson.Parser URI
+            uriFromString s = case parseAbsoluteURI s of
+                Just u -> pure u
+                Nothing -> fail $ "could not parse URI '" ++ s ++ "'"
+
+instance ToJSON ConnectionConfig where
+    toJSON ConnectionConfig{..} = object ["baseuri" .= show esBaseURI, "credentials" .= esCredentialsConfig]
+
 data Config = Config
     { esConnectionConfig              :: ConnectionConfig
     , esGeneralConfig                 :: GeneralConfig
@@ -165,5 +205,40 @@ configParserInfo = info (configParser <**> helper)
         <> progDesc "Interact with Elasticsearch from the shell"
         <> header "escli - Interact with Elasticsearch from the shell")
 
+findConfigFile :: IO (Maybe FilePath)
+findConfigFile = go =<< getCurrentDirectory
+  where
+    go d = do
+        let candidatePath = d </> configFileName
+            parentPath = takeDirectory d
+        foundIt <- doesFileExist candidatePath
+        if foundIt
+            then return (Just candidatePath)
+            else if parentPath == d
+                then return Nothing
+                else go parentPath
+
 withConfig :: (Config -> IO a) -> IO a
-withConfig go = go =<< execParser configParserInfo
+withConfig go = do
+    argsConfig <- execParser configParserInfo
+    let saveConnectionConfig = esSaveConnectionConfig $ esGeneralConfig argsConfig
+    config <- if esConnectionConfig argsConfig == ConnectionConfig defaultBaseUri NoCredentials
+        then if saveConnectionConfig
+            then error "no connection config given, nothing to save"
+            else do
+                maybeConfigFilePath <- findConfigFile
+                case maybeConfigFilePath of
+                    Nothing -> return argsConfig
+                    Just configFilePath -> do
+                        fileConfigOrError <- eitherDecodeFileStrict' configFilePath
+                        case fileConfigOrError of
+                            Left msg -> error msg
+                            Right fileConfig -> do
+                                putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
+                                return argsConfig {esConnectionConfig = fileConfig}
+        else do
+            when saveConnectionConfig $ do
+                encodeFile configFileName $ esConnectionConfig argsConfig
+                putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
+            return argsConfig
+    go config

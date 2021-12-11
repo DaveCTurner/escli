@@ -16,6 +16,8 @@ dependencies:
 - conduit-extra
 - connection
 - data-default-class
+- directory
+- filepath
 - http-client
 - http-client-tls
 - http-media
