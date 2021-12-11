@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
@@ -99,8 +100,8 @@ main = withConfig $ \config@Config
              .| conduitParser esCommand
              .| DCL.map snd
              .| awaitForever (runCommand config applyCredentials manager)
-             .| awaitForever (\logEntry -> liftIO $ do
-                    putStrLn logEntry
+             .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
+                    putStrLn consoleEntry
                     writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
 
 prettyStringFromJson :: ToJSON a => a -> String
@@ -117,7 +118,7 @@ escapeShellQuoted c
     | c == '\'' = "\\'"
     | otherwise = [c]
 
-runCommand :: Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand String IO ()
+runCommand :: Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand
     Config
         { esGeneralConfig    = GeneralConfig{..}
@@ -147,7 +148,8 @@ runCommand
 
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
         resolvedUriString = getUri req `relativeFrom` esBaseURI
-        tellLn l = tell l >> tell "\n"
+        tellBoth l = tell (l,l)
+        tellLn l = tellBoth l >> tellBoth "\n"
 
     before <- liftIO getCurrentTime
 
@@ -204,16 +206,24 @@ runCommand
                 Right bv -> Prelude.lines $ prettyStringFromJson bv
             linesFromPlainBody b = map (T.unpack . T.decodeUtf8 . BL.toStrict) $ BL.split 0x0a b
 
-            truncateBody = if esMaxResponseLines < 0 then id else go esMaxResponseLines
-                where go _ [] = []
-                      go linesRemaining (l:ls) | linesRemaining > 0 = l : go (linesRemaining - 1) ls
-                      go _ remainder = ["... (" ++ show (length remainder) ++ " lines skipped)"]
-
         case lookup hContentType (responseHeaders response) of
             Nothing -> tellLn "# No content-type returned"
             Just ct -> case mapContentMedia [("application/json", linesFromJsonBody), ("text/plain", linesFromPlainBody)] ct of
                 Nothing -> tellLn $ "# Unknown content-type: " ++ show ct
-                Just linesFn -> forM_ (truncateBody $ linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
+                Just linesFn -> if esMaxResponseLines < 0
+                    then forM_ (linesFn $ responseBody response) $ \l -> tellLn $ "# " ++ l
+                    else go esMaxResponseLines 0 (linesFn $ responseBody response)
+                        where   go _ skipped [] = do
+                                    when (0 < skipped) $ tell ("# ... (" ++ show (skipped::Int) ++ " lines skipped)\n", "")
+                                    return ()
+                                go linesRemaining skipped (l:ls) = if 0 < (linesRemaining::Int)
+                                    then do
+                                        tellLn $ "# " ++ l
+                                        go (linesRemaining - 1) skipped ls
+                                    else do
+                                        tell ("", "# " ++ l ++ "\n")
+                                        go 0 (skipped + 1) ls
+
 
         unless esHideTiming $ do
             tellLn $ "# at " ++ formatISO8601Millis after
