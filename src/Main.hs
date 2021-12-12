@@ -262,7 +262,7 @@ runCommand
                 _                                                 -> return ()
             case esCredentialsConfig of
                 NoCredentials                          -> return ()
-                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then passString else "<REDACTED>") ++ "'"
+                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$ESCLI_PASSWORD")
                 ApiKeyCredentials apiKeyEnvVar         -> tell $ " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
             case maybeContentTypeHeader of
                 []    | httpVerbString == "GET"  -> return ()
