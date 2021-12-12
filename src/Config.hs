@@ -7,7 +7,9 @@ module Config
     , CertificateVerificationConfig(..)
     , CredentialsConfig(..)
     , ConnectionConfig(..)
+    , EndpointConfig(..)
     , withConfig
+    , configFileName
     ) where
 
 import Options.Applicative
@@ -16,7 +18,6 @@ import System.FilePath
 import System.Directory
 import Data.Aeson
 import qualified Data.Aeson.Types as Aeson
-import Control.Monad
 
 configFileName :: FilePath
 configFileName = "escli_config.json"
@@ -122,32 +123,24 @@ instance ToJSON CredentialsConfig where
     toJSON (ApiKeyCredentials var) = object ["type" .= ("apikey" :: String), "var" .= var]
     toJSON v = error $ "saving credentials " ++ show v ++ " not supported"
 
+data EndpointConfig
+    = DefaultEndpoint
+    | URIEndpoint URI
+    | CloudClusterEndpoint String String
+    deriving (Show, Eq)
+
 data ConnectionConfig = ConnectionConfig
-    { esBaseURI                       :: URI
+    { esEndpointConfig                :: EndpointConfig
     , esCredentialsConfig             :: CredentialsConfig
     } deriving (Show, Eq)
 
-defaultBaseUri :: URI
-defaultBaseUri = URI
-    { uriScheme = "http:"
-    , uriAuthority = Just URIAuth
-        { uriUserInfo = ""
-        , uriRegName = "localhost"
-        , uriPort    = ":9200"
-        }
-    , uriPath = ""
-    , uriQuery = ""
-    , uriFragment = ""
-    }
-
 connectionConfigParser :: Parser ConnectionConfig
 connectionConfigParser = ConnectionConfig
-    <$> option (maybeReader parseAbsoluteURI)
+    <$> (URIEndpoint <$> option (maybeReader parseAbsoluteURI)
         (  long "server"
         <> help "Base HTTP URI of the Elasticsearch server"
-        <> showDefault
-        <> value defaultBaseUri
         <> metavar "ADDR")
+        <|> pure DefaultEndpoint)
     <*> credentialsConfigParser
 
 cloudConnectionConfigParser :: Parser ConnectionConfig
@@ -161,31 +154,24 @@ cloudConnectionConfigParser = buildCloudConnectionConfig
         <> help "Cloud cluster ID"
         <> metavar "CLUSTER")
     where
-    buildCloudConnectionConfig cloudRegion clusterId = case parseAbsoluteURI
-            $ "https://adminconsole.found.no/api/v1/regions/"
-            ++ cloudRegion
-            ++ "/clusters/elasticsearch/"
-            ++ clusterId
-            ++ "/proxy/"
-            of
-            Nothing -> error "could not construct cloud URI"
-            Just uri -> ConnectionConfig
-                { esBaseURI = uri
-                , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
-                }
+        buildCloudConnectionConfig cloudRegion clusterId = ConnectionConfig
+            { esEndpointConfig    = CloudClusterEndpoint cloudRegion clusterId
+            , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
+            }
 
 instance FromJSON ConnectionConfig where
     parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig
         <$> (uriFromString =<< (v .: "baseuri"))
         <*> (v .: "credentials")
         where
-            uriFromString :: String -> Aeson.Parser URI
+            uriFromString :: String -> Aeson.Parser EndpointConfig
             uriFromString s = case parseAbsoluteURI s of
-                Just u -> pure u
+                Just u  -> pure $ URIEndpoint u
                 Nothing -> fail $ "could not parse URI '" ++ s ++ "'"
 
 instance ToJSON ConnectionConfig where
-    toJSON ConnectionConfig{..} = object ["baseuri" .= show esBaseURI, "credentials" .= esCredentialsConfig]
+    toJSON ConnectionConfig{esEndpointConfig = URIEndpoint esBaseURI,..} = object ["baseuri" .= show esBaseURI, "credentials" .= esCredentialsConfig]
+    toJSON cc = error $ "saving connection config " ++ show cc ++ " not supported"
 
 data Config = Config
     { esConnectionConfig              :: ConnectionConfig
@@ -221,24 +207,17 @@ findConfigFile = go =<< getCurrentDirectory
 withConfig :: (Config -> IO a) -> IO a
 withConfig go = do
     argsConfig <- execParser configParserInfo
-    let saveConnectionConfig = esSaveConnectionConfig $ esGeneralConfig argsConfig
-    config <- if esConnectionConfig argsConfig == ConnectionConfig defaultBaseUri NoCredentials
-        then if saveConnectionConfig
-            then error "no connection config given, nothing to save"
-            else do
-                maybeConfigFilePath <- findConfigFile
-                case maybeConfigFilePath of
-                    Nothing -> return argsConfig
-                    Just configFilePath -> do
-                        fileConfigOrError <- eitherDecodeFileStrict' configFilePath
-                        case fileConfigOrError of
-                            Left msg -> error msg
-                            Right fileConfig -> do
-                                putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
-                                return argsConfig {esConnectionConfig = fileConfig}
-        else do
-            when saveConnectionConfig $ do
-                encodeFile configFileName $ esConnectionConfig argsConfig
-                putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
-            return argsConfig
+    config <- if esConnectionConfig argsConfig == ConnectionConfig DefaultEndpoint NoCredentials
+        then do
+            maybeConfigFilePath <- findConfigFile
+            case maybeConfigFilePath of
+                Nothing -> return argsConfig
+                Just configFilePath -> do
+                    fileConfigOrError <- eitherDecodeFileStrict' configFilePath
+                    case fileConfigOrError of
+                        Left msg -> error msg
+                        Right fileConfig -> do
+                            putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
+                            return argsConfig {esConnectionConfig = fileConfig}
+        else return argsConfig
     go config

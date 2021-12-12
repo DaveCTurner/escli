@@ -47,14 +47,24 @@ withMaybeLogFile (Just fp) go = withFile fp AppendMode $ \h -> do
   hSetBuffering h NoBuffering
   go (B.hPutStr h)
 
+defaultBaseUri :: URI
+defaultBaseUri = URI
+    { uriScheme = "http:"
+    , uriAuthority = Just URIAuth
+        { uriUserInfo = ""
+        , uriRegName = "localhost"
+        , uriPort    = ":9200"
+        }
+    , uriPath = ""
+    , uriQuery = ""
+    , uriFragment = ""
+    }
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
     , .. } -> do
-
-    putStrLn $ "# Server URI: " ++ show esBaseURI
-    putStrLn $ ""
 
     (certStore, verifyCert) <- case esCertificateVerificationConfig of
         DefaultCertificateVerificationConfig -> (,True)  <$> getSystemCertificateStore
@@ -65,7 +75,10 @@ main = withConfig $ \config@Config
                 Just certStore -> return (certStore, True)
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
-    let hostName = fromMaybe "" $ fmap uriRegName $ uriAuthority esBaseURI
+    let hostName = case esEndpointConfig of
+            DefaultEndpoint          -> "localhost"
+            URIEndpoint baseURI      -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
+            CloudClusterEndpoint _ _ -> "adminconsole.found.no"
 
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
@@ -94,12 +107,35 @@ main = withConfig $ \config@Config
                     : requestHeaders req
                 }
 
+    baseURI <- case esEndpointConfig of
+        DefaultEndpoint                            -> return defaultBaseUri
+        URIEndpoint baseURI                        -> return baseURI
+        CloudClusterEndpoint cloudRegion clusterId -> case parseAbsoluteURI
+            $ "https://adminconsole.found.no/api/v1/regions/"
+            ++ cloudRegion
+            ++ "/clusters/elasticsearch/"
+            ++ clusterId
+            ++ "/proxy/"
+            of
+                Nothing -> error "could not construct cloud URI"
+                Just uri -> return uri
+
+    when esSaveConnectionConfig $
+        if esEndpointConfig == DefaultEndpoint && esCredentialsConfig == NoCredentials
+            then error "no connection config given, nothing to save"
+            else do
+                encodeFile configFileName $ (esConnectionConfig config) {esEndpointConfig = URIEndpoint baseURI}
+                putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
+
+    putStrLn $ "# Server URI: " ++ show baseURI
+    putStrLn $ ""
+
     withMaybeLogFile esLogFile $ \writeLog ->
         runConduit
              $  sourceHandle stdin
              .| conduitParser esCommand
              .| DCL.map snd
-             .| awaitForever (runCommand config applyCredentials manager)
+             .| awaitForever (runCommand baseURI config applyCredentials manager)
              .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
                     putStrLn consoleEntry
                     writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
@@ -118,8 +154,9 @@ escapeShellQuoted c
     | c == '\'' = "\\'"
     | otherwise = [c]
 
-runCommand :: Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
+runCommand :: URI -> Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand
+    baseURI
     Config
         { esGeneralConfig    = GeneralConfig{..}
         , esConnectionConfig = ConnectionConfig{..}
@@ -130,7 +167,7 @@ runCommand
 
     = do
 
-    let absUri = maybe (error "Bad URI") (show . (`relativeTo` esBaseURI)) (parseURIReference httpPath)
+    let absUri = maybe (error "Bad URI") (show . (`relativeTo` baseURI)) (parseURIReference httpPath)
         initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
 
         BuilderWithLength bodyBuilder bodyLength = builderFromBody cmdBody
@@ -147,7 +184,7 @@ runCommand
             }
 
         httpVerbString = T.unpack $ T.decodeUtf8 httpVerb
-        resolvedUriString = getUri req `relativeFrom` esBaseURI
+        resolvedUriString = getUri req `relativeFrom` baseURI
         tellBoth l = tell (l,l)
         tellLn l = tellBoth l >> tellBoth "\n"
 
