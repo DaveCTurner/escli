@@ -125,8 +125,9 @@ instance ToJSON CredentialsConfig where
 
 data EndpointConfig
     = DefaultEndpoint
-    | URIEndpoint URI
-    | CloudClusterEndpoint String String
+    | URIEndpoint             URI
+    | CloudClusterEndpoint    String String
+    | CloudDeploymentEndpoint String
     deriving (Show, Eq)
 
 data ConnectionConfig = ConnectionConfig
@@ -134,8 +135,8 @@ data ConnectionConfig = ConnectionConfig
     , esCredentialsConfig             :: CredentialsConfig
     } deriving (Show, Eq)
 
-connectionConfigParser :: Parser ConnectionConfig
-connectionConfigParser = ConnectionConfig
+uriEndpointConfigParser :: Parser ConnectionConfig
+uriEndpointConfigParser = ConnectionConfig
     <$> (URIEndpoint <$> option (maybeReader parseAbsoluteURI)
         (  long "server"
         <> help "Base HTTP URI of the Elasticsearch server"
@@ -143,8 +144,20 @@ connectionConfigParser = ConnectionConfig
         <|> pure DefaultEndpoint)
     <*> credentialsConfigParser
 
-cloudConnectionConfigParser :: Parser ConnectionConfig
-cloudConnectionConfigParser = buildCloudConnectionConfig
+cloudDeploymentEndpointConfigParser :: Parser ConnectionConfig
+cloudDeploymentEndpointConfigParser = buildConnectionConfig
+    <$> strOption
+        (  long "deployment"
+        <> help "Cloud deployment ID"
+        <> metavar "DEPLOYMENT-ID")
+    where
+        buildConnectionConfig deploymentId = ConnectionConfig
+            { esEndpointConfig    = CloudDeploymentEndpoint deploymentId
+            , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
+            }
+
+cloudClusterEndpointConfigParser :: Parser ConnectionConfig
+cloudClusterEndpointConfigParser = buildConnectionConfig
     <$> strOption
         (  long "cloud-region"
         <> help "Cloud region name"
@@ -154,7 +167,7 @@ cloudConnectionConfigParser = buildCloudConnectionConfig
         <> help "Cloud cluster ID"
         <> metavar "CLUSTER")
     where
-        buildCloudConnectionConfig cloudRegion clusterId = ConnectionConfig
+        buildConnectionConfig cloudRegion clusterId = ConnectionConfig
             { esEndpointConfig    = CloudClusterEndpoint cloudRegion clusterId
             , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
             }
@@ -181,7 +194,7 @@ data Config = Config
 
 configParser :: Parser Config
 configParser = Config
-    <$> (connectionConfigParser <|> cloudConnectionConfigParser)
+    <$> (cloudDeploymentEndpointConfigParser <|> cloudClusterEndpointConfigParser <|> uriEndpointConfigParser)
     <*> generalConfigParser
     <*> certificateVerificationConfigParser
 

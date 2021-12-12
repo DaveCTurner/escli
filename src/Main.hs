@@ -60,6 +60,35 @@ defaultBaseUri = URI
     , uriFragment = ""
     }
 
+data DeploymentDetails = DeploymentDetails DeploymentResourceDetails deriving (Show, Eq)
+
+instance FromJSON DeploymentDetails where
+    parseJSON = withObject "DeploymentDetails" $ \v -> DeploymentDetails <$> v .: "resources"
+
+data DeploymentResourceDetails = DeploymentResourceDetails [DeploymentClusterDetails] deriving (Show, Eq)
+
+instance FromJSON DeploymentResourceDetails where
+    parseJSON = withObject "DeploymentResourceDetails" $ \v -> DeploymentResourceDetails <$> v .: "elasticsearch"
+
+data DeploymentClusterDetails = DeploymentClusterDetails
+    { deploymentClusterRefId  :: String
+    , deploymentClusterId     :: String
+    , deploymentClusterRegion :: String
+    , deploymentClusterInfo   :: DeploymentClusterInfo
+    } deriving (Show, Eq)
+
+instance FromJSON DeploymentClusterDetails where
+    parseJSON = withObject "DeploymentClusterDetails" $ \v -> DeploymentClusterDetails
+        <$> v .: "ref_id"
+        <*> v .: "id"
+        <*> v .: "region"
+        <*> v .: "info"
+
+data DeploymentClusterInfo = DeploymentClusterInfo { deploymentClusterInfoName :: String } deriving (Show, Eq)
+
+instance FromJSON DeploymentClusterInfo where
+    parseJSON = withObject "DeploymentClusterInfo" $ \v -> DeploymentClusterInfo <$> v .: "cluster_name"
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
@@ -76,9 +105,10 @@ main = withConfig $ \config@Config
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
     let hostName = case esEndpointConfig of
-            DefaultEndpoint          -> "localhost"
-            URIEndpoint baseURI      -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
-            CloudClusterEndpoint _ _ -> "adminconsole.found.no"
+            DefaultEndpoint             -> "localhost"
+            URIEndpoint baseURI         -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
+            CloudClusterEndpoint    _ _ -> "adminconsole.found.no"
+            CloudDeploymentEndpoint _   -> "adminconsole.found.no"
 
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
@@ -107,10 +137,8 @@ main = withConfig $ \config@Config
                     : requestHeaders req
                 }
 
-    baseURI <- case esEndpointConfig of
-        DefaultEndpoint                            -> return defaultBaseUri
-        URIEndpoint baseURI                        -> return baseURI
-        CloudClusterEndpoint cloudRegion clusterId -> case parseAbsoluteURI
+    baseURI <- let
+        buildCloudEndpointURI cloudRegion clusterId = case parseAbsoluteURI
             $ "https://adminconsole.found.no/api/v1/regions/"
             ++ cloudRegion
             ++ "/clusters/elasticsearch/"
@@ -118,7 +146,33 @@ main = withConfig $ \config@Config
             ++ "/proxy/"
             of
                 Nothing -> error "could not construct cloud URI"
-                Just uri -> return uri
+                Just uri -> uri
+        in case esEndpointConfig of
+        DefaultEndpoint                            -> return defaultBaseUri
+        URIEndpoint baseURI                        -> return baseURI
+        CloudClusterEndpoint cloudRegion clusterId -> return $ buildCloudEndpointURI cloudRegion clusterId
+        CloudDeploymentEndpoint deploymentId -> do
+            Just initReq <- return $ parseRequest $ "https://adminconsole.found.no/api/v1/deployments/" ++ deploymentId
+            getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
+            when (responseStatus getDeploymentResponse /= ok200) $ error "failed to get deployment details"
+            case eitherDecode' (responseBody getDeploymentResponse) of
+                Left msg -> error msg
+                Right (DeploymentDetails (DeploymentResourceDetails clusters)) -> case clusters of
+                    [] -> error $ "no clusters found for deployment " ++ deploymentId
+                    [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI deploymentClusterRegion deploymentClusterId
+                    _ -> do
+                        putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
+                        forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
+                            $ "--cloud-region "
+                            ++ deploymentClusterRegion
+                            ++ " --cluster-id "
+                            ++ deploymentClusterId
+                            ++ " # ref "
+                            ++ deploymentClusterRefId
+                            ++ ", name "
+                            ++ show (deploymentClusterInfoName deploymentClusterInfo)
+                        putStrLn ""
+                        error "deployment has multiple clusters"
 
     when esSaveConnectionConfig $
         if esEndpointConfig == DefaultEndpoint && esCredentialsConfig == NoCredentials
