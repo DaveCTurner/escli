@@ -12,9 +12,10 @@ import Control.Monad.Writer
 import Data.Aeson
 import Data.Conduit
 import Data.Conduit.Attoparsec
-import Data.Conduit.Binary
+import Data.Conduit.Binary hiding (drop)
 import Data.Default.Class
 import Data.Int
+import Data.List
 import Data.Maybe
 import Data.Time
 import Data.Time.ISO8601
@@ -151,7 +152,11 @@ main = withConfig $ \config@Config
         DefaultEndpoint                            -> return defaultBaseUri
         URIEndpoint baseURI                        -> return baseURI
         CloudClusterEndpoint cloudRegion clusterId -> return $ buildCloudEndpointURI cloudRegion clusterId
-        CloudDeploymentEndpoint deploymentId -> do
+        CloudDeploymentEndpoint deploymentIdString -> do
+            let deploymentURIPrefix = "https://admin.found.no/deployments/"
+                deploymentId = if deploymentURIPrefix `isPrefixOf` deploymentIdString
+                                then drop (length deploymentURIPrefix) deploymentIdString
+                                else deploymentIdString
             Just initReq <- return $ parseRequest $ "https://adminconsole.found.no/api/v1/deployments/" ++ deploymentId
             getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
             when (responseStatus getDeploymentResponse /= ok200) $ error "failed to get deployment details"
