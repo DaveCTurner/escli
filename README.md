@@ -1,18 +1,41 @@
-
     escli - Interact with Elasticsearch from the shell
 
-    Usage: escli [--server ADDR] [--hide-timing] [--hide-headings] [--hide-status]
-                 [--hide-curl-equivalent] [--log-file FILE]
+    Usage: escli ([--deployment DEPLOYMENT-ID] | [--cloud-region REGION]
+                 [--cluster-id CLUSTER] | [--server ADDR] ([--username USERNAME]
+                 [--password PASSWORD] | [--apikey ENVVAR])) [--hide-timing]
+                 [--hide-headings] [--hide-status] [--hide-curl-equivalent]
+                 [--show-curl-password] [--hide-deprecation-warnings] [--save]
+                 ([--no-max-response-lines] | [--max-response-lines LINES])
+                 [--log-file FILE] ([--certificate-store FILE] |
+                 [--insecurely-bypass-certificate-verification])
       Interact with Elasticsearch from the shell
 
     Available options:
-      --server ADDR            Base HTTP URI of the Elasticsearch
-                               server (default: http://localhost:9200)
+      --deployment DEPLOYMENT-ID
+                               Cloud deployment ID
+      --cloud-region REGION    Cloud region name
+      --cluster-id CLUSTER     Cloud cluster ID
+      --server ADDR            Base HTTP URI of the Elasticsearch server
+      --username USERNAME      Elasticsearch username, for security-enabled clusters
+      --password PASSWORD      Elasticsearch password, for security-enabled clusters
+      --apikey ENVVAR          Environment variable holding API key
       --hide-timing            Hide timing information
       --hide-headings          Hide request/response headings
       --hide-status            Hide HTTP status code
       --hide-curl-equivalent   Hide `curl`-equivalent command
+      --show-curl-password     Show password in `curl`-equivalent command
+      --hide-deprecation-warnings
+                               Hide deprecation warnings
+      --save                   Save connection config to 'escli_config.json' for
+                               future invocations
+      --no-max-response-lines  Show an unlimited number of lines of response
+      --max-response-lines LINES
+                               Maximum number of lines of response to
+                               show (default: 40)
       --log-file FILE          File in which to record output
+      --certificate-store FILE Location of certificate store
+      --insecurely-bypass-certificate-verification
+                               Do not perform certificate verification
       -h,--help                Show this help text
 
 Usage example:
