@@ -260,7 +260,7 @@ runCommand
         unless esHideTiming $
             tellLn $ "# at " ++ formatISO8601Millis before
         unless esHideCurlEquivalent $ tellLn $ execWriter $ do
-            tell "# curl --compressed"
+            tell "# curl --silent --compressed"
             case esCertificateVerificationConfig of
                 NoCertificateVerificationConfig                   -> tell " -k"
                 CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
