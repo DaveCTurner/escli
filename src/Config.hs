@@ -126,8 +126,7 @@ instance ToJSON CredentialsConfig where
 data EndpointConfig
     = DefaultEndpoint
     | URIEndpoint             URI
-    | CloudClusterEndpoint    String String
-    | CloudDeploymentEndpoint String
+    | CloudDeploymentEndpoint String (Maybe String)
     deriving (Show, Eq)
 
 data ConnectionConfig = ConnectionConfig
@@ -150,25 +149,13 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
         (  long "deployment"
         <> help "Cloud deployment ID"
         <> metavar "DEPLOYMENT-ID")
+    <*> optional (strOption
+        (  long "deployment-ref"
+        <> help "Cloud deployment reference"
+        <> metavar "REF-ID"))
     where
-        buildConnectionConfig deploymentId = ConnectionConfig
-            { esEndpointConfig    = CloudDeploymentEndpoint deploymentId
-            , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
-            }
-
-cloudClusterEndpointConfigParser :: Parser ConnectionConfig
-cloudClusterEndpointConfigParser = buildConnectionConfig
-    <$> strOption
-        (  long "cloud-region"
-        <> help "Cloud region name"
-        <> metavar "REGION")
-    <*> strOption
-        (  long "cluster-id"
-        <> help "Cloud cluster ID"
-        <> metavar "CLUSTER")
-    where
-        buildConnectionConfig cloudRegion clusterId = ConnectionConfig
-            { esEndpointConfig    = CloudClusterEndpoint cloudRegion clusterId
+        buildConnectionConfig deploymentId deploymentRefId = ConnectionConfig
+            { esEndpointConfig    = CloudDeploymentEndpoint deploymentId deploymentRefId
             , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
             }
 
@@ -194,7 +181,7 @@ data Config = Config
 
 configParser :: Parser Config
 configParser = Config
-    <$> (cloudDeploymentEndpointConfigParser <|> cloudClusterEndpointConfigParser <|> uriEndpointConfigParser)
+    <$> (cloudDeploymentEndpointConfigParser <|> uriEndpointConfigParser)
     <*> generalConfigParser
     <*> certificateVerificationConfigParser
 
