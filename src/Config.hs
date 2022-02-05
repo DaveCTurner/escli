@@ -107,7 +107,7 @@ credentialsConfigParser
             <> metavar "PASSWORD"))
     <|> (ApiKeyCredentials
         <$> strOption
-            (  long "apikey"
+            (  long "api-key"
             <> help "Environment variable holding API key"
             <> metavar "ENVVAR"))
     <|> pure NoCredentials
@@ -126,7 +126,7 @@ instance ToJSON CredentialsConfig where
 data EndpointConfig
     = DefaultEndpoint
     | URIEndpoint             URI
-    | CloudDeploymentEndpoint String (Maybe String)
+    | CloudDeploymentEndpoint URI String (Maybe String)
     deriving (Show, Eq)
 
 data ConnectionConfig = ConnectionConfig
@@ -153,11 +153,25 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
         (  long "deployment-ref"
         <> help "Cloud deployment reference"
         <> metavar "REF-ID"))
+    <*> strOption
+        (  long "cloud-api-root"
+        <> help "URL of root Cloud API endpoint"
+        <> metavar "URL"
+        <> value "https://admin.found.no/"
+        <> showDefault)
+    <*> strOption
+        (  long "api-key"
+        <> help "Environment variable holding API key"
+        <> metavar "ENVVAR"
+        <> value "ADMIN_EC_API_KEY"
+        <> showDefault)
     where
-        buildConnectionConfig deploymentId deploymentRefId = ConnectionConfig
-            { esEndpointConfig    = CloudDeploymentEndpoint deploymentId deploymentRefId
-            , esCredentialsConfig = ApiKeyCredentials "ADMIN_EC_API_KEY"
-            }
+        buildConnectionConfig deploymentId deploymentRefId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
+            Just apiRoot -> ConnectionConfig
+                { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
+                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+                }
+            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
 
 instance FromJSON ConnectionConfig where
     parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig

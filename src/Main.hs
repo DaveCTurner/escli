@@ -106,9 +106,11 @@ main = withConfig $ \config@Config
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
     let hostName = case esEndpointConfig of
-            DefaultEndpoint             -> "localhost"
-            URIEndpoint baseURI         -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
-            CloudDeploymentEndpoint _ _ -> "adminconsole.found.no"
+            DefaultEndpoint               -> "localhost"
+            URIEndpoint baseURI           -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
+            CloudDeploymentEndpoint apiRoot _ _ -> case uriAuthority apiRoot of
+                Just URIAuth{..} -> uriRegName
+                Nothing -> error $ "could not extract hostname from URI '" ++ show apiRoot ++ "'"
 
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
@@ -138,8 +140,9 @@ main = withConfig $ \config@Config
                 }
 
     baseURI <- let
-        buildCloudEndpointURI deploymentId deploymentRef = case parseAbsoluteURI
-            $ "https://adminconsole.found.no/api/v1/deployments/"
+        buildCloudEndpointURI apiRoot deploymentId deploymentRef = case parseAbsoluteURI
+            $ show apiRoot
+            ++ "api/v1/deployments/"
             ++ deploymentId
             ++ "/elasticsearch/"
             ++ deploymentRef
@@ -150,22 +153,22 @@ main = withConfig $ \config@Config
         in case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
         URIEndpoint baseURI                                -> return baseURI
-        CloudDeploymentEndpoint deploymentIdString maybeDeploymentRef -> do
-            let deploymentURIPrefix = "https://admin.found.no/deployments/"
+        CloudDeploymentEndpoint apiRoot deploymentIdString maybeDeploymentRef -> do
+            let deploymentURIPrefix = show apiRoot ++ "deployments/"
                 deploymentId = if deploymentURIPrefix `isPrefixOf` deploymentIdString
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
             case maybeDeploymentRef of
-                Just deploymentRef -> return $ buildCloudEndpointURI deploymentId deploymentRef
+                Just deploymentRef -> return $ buildCloudEndpointURI apiRoot deploymentId deploymentRef
                 Nothing -> do
-                    Just initReq <- return $ parseRequest $ "https://adminconsole.found.no/api/v1/deployments/" ++ deploymentId
+                    Just initReq <- return $ parseRequest $ show apiRoot ++ "/api/v1/deployments/" ++ deploymentId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
-                    when (responseStatus getDeploymentResponse /= ok200) $ error "failed to get deployment details"
+                    when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
                     case eitherDecode' (responseBody getDeploymentResponse) of
                         Left msg -> error msg
                         Right (DeploymentDetails (DeploymentResourceDetails clusters)) -> case clusters of
                             [] -> error $ "no clusters found for deployment " ++ deploymentId
-                            [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI deploymentId deploymentClusterRefId
+                            [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI apiRoot deploymentId deploymentClusterRefId
                             _ -> do
                                 putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
                                 forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
