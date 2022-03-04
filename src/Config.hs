@@ -117,10 +117,12 @@ instance FromJSON CredentialsConfig where
         credType <- v .: "type"
         case credType of
             "apikey" -> ApiKeyCredentials <$> v .: "var"
+            "basic"  -> BasicCredentials  <$> v .: "user" <*> v .: "pass"
             _        -> fail $ "unknown credentials type '" ++ credType ++ "'"
 
 instance ToJSON CredentialsConfig where
     toJSON (ApiKeyCredentials var) = object ["type" .= ("apikey" :: String), "var" .= var]
+    toJSON (BasicCredentials  user pass) = object ["type" .= ("basic"  :: String), "user" .= user, "pass" .= pass]
     toJSON v = error $ "saving credentials " ++ show v ++ " not supported"
 
 data EndpointConfig
