@@ -271,7 +271,7 @@ runCommand
                 _                                                 -> return ()
             case esCredentialsConfig of
                 NoCredentials                          -> return ()
-                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$ESCLI_PASSWORD")
+                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
                 ApiKeyCredentials apiKeyEnvVar         -> tell $ " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
             case maybeContentTypeHeader of
                 []    | httpVerbString == "GET"  -> return ()
