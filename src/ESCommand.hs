@@ -19,7 +19,7 @@ data ESCommand = ESCommand
 
 esCommand :: AP.Parser ESCommand
 esCommand = AP.skipMany skipNewline >> ESCommand
-    <$> AP.choice (map (AP.string . T.encodeUtf8 . T.pack) $ words "GET POST PUT DELETE")
+    <$> AP.choice (map (AP.string . T.encodeUtf8 . T.pack) $ words "GET POST PUT DELETE HEAD")
     <*  AP.takeWhile1 (== 0x20)
     <*> (T.unpack . T.decodeUtf8With T.lenientDecode <$> AP.takeWhile1 (>= 0x20))
     <*  skipNewline
