@@ -134,6 +134,7 @@ data EndpointConfig
 data ConnectionConfig = ConnectionConfig
     { esEndpointConfig                :: EndpointConfig
     , esCredentialsConfig             :: CredentialsConfig
+    , esCertificateVerificationConfig :: CertificateVerificationConfig
     } deriving (Show, Eq)
 
 uriEndpointConfigParser :: Parser ConnectionConfig
@@ -144,6 +145,7 @@ uriEndpointConfigParser = ConnectionConfig
         <> metavar "ADDR")
         <|> pure DefaultEndpoint)
     <*> credentialsConfigParser
+    <*> certificateVerificationConfigParser
 
 cloudDeploymentEndpointConfigParser :: Parser ConnectionConfig
 cloudDeploymentEndpointConfigParser = buildConnectionConfig
@@ -172,6 +174,7 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
             Just apiRoot -> ConnectionConfig
                 { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
                 , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
                 }
             Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
 
@@ -179,6 +182,7 @@ instance FromJSON ConnectionConfig where
     parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig
         <$> (uriFromString =<< (v .: "baseuri"))
         <*> (v .: "credentials")
+        <*> (maybe DefaultCertificateVerificationConfig CustomCertificateVerificationConfig <$> (v .:! "certFile"))
         where
             uriFromString :: String -> Aeson.Parser EndpointConfig
             uriFromString s = case parseAbsoluteURI s of
@@ -186,20 +190,24 @@ instance FromJSON ConnectionConfig where
                 Nothing -> fail $ "could not parse URI '" ++ s ++ "'"
 
 instance ToJSON ConnectionConfig where
-    toJSON ConnectionConfig{esEndpointConfig = URIEndpoint esBaseURI,..} = object ["baseuri" .= show esBaseURI, "credentials" .= esCredentialsConfig]
+    toJSON ConnectionConfig{esEndpointConfig = URIEndpoint esBaseURI,..} = object $
+        [ "baseuri"     .= show esBaseURI
+        , "credentials" .= esCredentialsConfig
+        ] ++ (case esCertificateVerificationConfig of
+                DefaultCertificateVerificationConfig -> []
+                CustomCertificateVerificationConfig file -> ["certFile" .= file]
+                _ -> error ("saving cert verification config " ++ show esCertificateVerificationConfig ++ " not supported"))
     toJSON cc = error $ "saving connection config " ++ show cc ++ " not supported"
 
 data Config = Config
     { esConnectionConfig              :: ConnectionConfig
     , esGeneralConfig                 :: GeneralConfig
-    , esCertificateVerificationConfig :: CertificateVerificationConfig
     } deriving (Show, Eq)
 
 configParser :: Parser Config
 configParser = Config
     <$> (cloudDeploymentEndpointConfigParser <|> uriEndpointConfigParser)
     <*> generalConfigParser
-    <*> certificateVerificationConfigParser
 
 configParserInfo :: ParserInfo Config
 configParserInfo = info (configParser <**> helper)
@@ -223,7 +231,7 @@ findConfigFile = go =<< getCurrentDirectory
 withConfig :: (Config -> IO a) -> IO a
 withConfig go = do
     argsConfig <- execParser configParserInfo
-    config <- if esConnectionConfig argsConfig == ConnectionConfig DefaultEndpoint NoCredentials
+    config <- if esConnectionConfig argsConfig == ConnectionConfig DefaultEndpoint NoCredentials DefaultCertificateVerificationConfig
         then do
             maybeConfigFilePath <- findConfigFile
             case maybeConfigFilePath of
