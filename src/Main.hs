@@ -94,7 +94,7 @@ main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
-    , .. } -> do
+    } -> do
 
     (certStore, verifyCert) <- case esCertificateVerificationConfig of
         DefaultCertificateVerificationConfig -> (,True)  <$> getSystemCertificateStore
@@ -223,7 +223,7 @@ runCommand
     Config
         { esGeneralConfig    = GeneralConfig{..}
         , esConnectionConfig = ConnectionConfig{..}
-        , ..}
+        }
     applyCredentials
     manager
     ESCommand{..}
