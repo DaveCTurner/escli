@@ -200,6 +200,11 @@ main = withConfig $ \config@Config
                 req = applyCredentials initReq
                     { method = T.encodeUtf8 "POST"
                     }
+            putStrLn $ "# curl --silent --compressed -XPOST"
+                ++ curlCertificateVerificationOption esCertificateVerificationConfig
+                ++ curlCredentialsOption             False esCredentialsConfig
+                ++ " "
+                ++ show captureURI
             withResponse req manager $ \response -> let
                 body = responseBody response
                 go = do
@@ -236,6 +241,16 @@ escapeShellQuoted c
     | c == '\n' = "\\n"
     | c == '\'' = "\\'"
     | otherwise = [c]
+
+curlCertificateVerificationOption :: CertificateVerificationConfig -> String
+curlCertificateVerificationOption NoCertificateVerificationConfig                     = " -k"
+curlCertificateVerificationOption (CustomCertificateVerificationConfig certStorePath) = " --cacert '" ++ certStorePath ++ "'"
+curlCertificateVerificationOption _                                                   = ""
+
+curlCredentialsOption :: Bool -> CredentialsConfig -> String
+curlCredentialsOption _                   NoCredentials = ""
+curlCredentialsOption esShowCurlPassword (BasicCredentials userString passString) = " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
+curlCredentialsOption _                  (ApiKeyCredentials apiKeyEnvVar)         = " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
 
 runCommand :: URI -> Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand
@@ -285,14 +300,8 @@ runCommand
             tellLn $ "# at " ++ formatISO8601Millis before
         unless esHideCurlEquivalent $ tellLn $ execWriter $ do
             tell "# curl --silent --compressed"
-            case esCertificateVerificationConfig of
-                NoCertificateVerificationConfig                   -> tell " -k"
-                CustomCertificateVerificationConfig certStorePath -> tell $ " --cacert '" ++ certStorePath ++ "'"
-                _                                                 -> return ()
-            case esCredentialsConfig of
-                NoCredentials                          -> return ()
-                BasicCredentials userString passString -> tell $ " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
-                ApiKeyCredentials apiKeyEnvVar         -> tell $ " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
+            tell $ curlCertificateVerificationOption esCertificateVerificationConfig
+            tell $ curlCredentialsOption             esShowCurlPassword esCredentialsConfig
             case maybeContentTypeHeader of
                 []    | httpVerbString == "GET"  -> return ()
                 (_:_) | httpVerbString == "POST" -> return ()
