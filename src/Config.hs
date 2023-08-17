@@ -8,6 +8,8 @@ module Config
     , CredentialsConfig(..)
     , ConnectionConfig(..)
     , EndpointConfig(..)
+    , OneShotCommandConfig(..)
+    , NodeType(..)
     , withConfig
     , configFileName
     ) where
@@ -32,7 +34,7 @@ data GeneralConfig = GeneralConfig
     , esSaveConnectionConfig    :: Bool
     , esMaxResponseLines        :: Int
     , esLogFile                 :: Maybe FilePath
-    , esThreadDumpNode          :: Maybe Int
+    , esOneShotCommand          :: Maybe OneShotCommandConfig
     } deriving (Show, Eq)
 
 data CertificateVerificationConfig
@@ -88,11 +90,24 @@ generalConfigParser = GeneralConfig
         (  long "log-file"
         <> help "File in which to record output"
         <> metavar "FILE"))
-    <*> optional (option auto
+    <*> optional oneShotCommandConfigParser
+
+data NodeType = NodeTypeInstance | NodeTypeTiebreaker deriving (Show, Eq)
+
+data OneShotCommandConfig
+    = ThreadDumpNode NodeType Int
+    deriving (Show, Eq)
+
+oneShotCommandConfigParser :: Parser OneShotCommandConfig
+oneShotCommandConfigParser
+    =   (ThreadDumpNode NodeTypeInstance <$> option auto
             (  long "thread-dump"
             <> help "Capture thread dump of node"
-            <> metavar "INSTANCE-ID"
-            ))
+            <> metavar "INSTANCE-ID"))
+    <|> (ThreadDumpNode NodeTypeTiebreaker <$> option auto
+            (  long "thread-dump-tiebreaker"
+            <> help "Capture thread dump of tiebreaker node"
+            <> metavar "INSTANCE-ID"))
 
 data CredentialsConfig
     = NoCredentials

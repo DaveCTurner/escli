@@ -191,9 +191,9 @@ main = withConfig $ \config@Config
                 encodeFile configFileName $ (esConnectionConfig config) {esEndpointConfig = URIEndpoint baseURI}
                 putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
 
-    case esThreadDumpNode of
-        Just n -> do
-            let captureURI = let s = printf "../instances/instance-%010d/thread_dump/_capture" n
+    case esOneShotCommand of
+        Just (ThreadDumpNode nodeType nodeIndex) -> do
+            let captureURI = let s = printf "../instances/%s-%010d/thread_dump/_capture" (nodeTypeInstancePrefix nodeType) nodeIndex
                                  r = fromMaybe (error s) $ parseRelativeReference s
                              in show $ relativeTo r baseURI
                 initReq = fromMaybe (error captureURI) $ parseRequest captureURI
@@ -241,6 +241,10 @@ escapeShellQuoted c
     | c == '\n' = "\\n"
     | c == '\'' = "\\'"
     | otherwise = [c]
+
+nodeTypeInstancePrefix :: NodeType -> String
+nodeTypeInstancePrefix NodeTypeInstance   = "instance"
+nodeTypeInstancePrefix NodeTypeTiebreaker = "tiebreaker"
 
 curlCertificateVerificationOption :: CertificateVerificationConfig -> String
 curlCertificateVerificationOption NoCertificateVerificationConfig                     = " -k"
