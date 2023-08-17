@@ -34,6 +34,7 @@ import Network.URI
 import System.IO
 import System.X509
 import System.Environment (getEnv)
+import Text.Printf (printf)
 import qualified Data.Aeson.Encode.Pretty
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
@@ -190,18 +191,37 @@ main = withConfig $ \config@Config
                 encodeFile configFileName $ (esConnectionConfig config) {esEndpointConfig = URIEndpoint baseURI}
                 putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
 
-    putStrLn $ "# Server URI: " ++ show baseURI
-    putStrLn $ ""
+    case esThreadDumpNode of
+        Just n -> do
+            let captureURI = let s = printf "../instances/instance-%010d/thread_dump/_capture" n
+                                 r = fromMaybe (error s) $ parseRelativeReference s
+                             in show $ relativeTo r baseURI
+                initReq = fromMaybe (error captureURI) $ parseRequest captureURI
+                req = applyCredentials initReq
+                    { method = T.encodeUtf8 "POST"
+                    }
+            withResponse req manager $ \response -> let
+                body = responseBody response
+                go = do
+                    chunk <- body
+                    when (B.length chunk /= 0) $ do
+                        B.hPutStr stdout chunk
+                        go
+                in go
 
-    withMaybeLogFile esLogFile $ \writeLog ->
-        runConduit
-             $  sourceHandle stdin
-             .| conduitParser esCommand
-             .| DCL.map snd
-             .| awaitForever (runCommand baseURI config applyCredentials manager)
-             .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
-                    putStrLn consoleEntry
-                    writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
+        _ -> do
+            putStrLn $ "# Server URI: " ++ show baseURI
+            putStrLn $ ""
+
+            withMaybeLogFile esLogFile $ \writeLog ->
+                runConduit
+                     $  sourceHandle stdin
+                     .| conduitParser esCommand
+                     .| DCL.map snd
+                     .| awaitForever (runCommand baseURI config applyCredentials manager)
+                     .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
+                            putStrLn consoleEntry
+                            writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v

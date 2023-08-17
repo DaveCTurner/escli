@@ -32,6 +32,7 @@ data GeneralConfig = GeneralConfig
     , esSaveConnectionConfig    :: Bool
     , esMaxResponseLines        :: Int
     , esLogFile                 :: Maybe FilePath
+    , esThreadDumpNode          :: Maybe Int
     } deriving (Show, Eq)
 
 data CertificateVerificationConfig
@@ -87,6 +88,11 @@ generalConfigParser = GeneralConfig
         (  long "log-file"
         <> help "File in which to record output"
         <> metavar "FILE"))
+    <*> optional (option auto
+            (  long "thread-dump"
+            <> help "Capture thread dump of node"
+            <> metavar "INSTANCE-ID"
+            ))
 
 data CredentialsConfig
     = NoCredentials
