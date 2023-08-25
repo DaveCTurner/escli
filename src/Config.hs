@@ -188,7 +188,7 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
         (  long "api-key"
         <> help "Environment variable holding API key"
         <> metavar "ENVVAR"
-        <> value "ADMIN_EC_API_KEY"
+        <> value "API_KEY"
         <> showDefault)
     where
         buildConnectionConfig deploymentId deploymentRefId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
