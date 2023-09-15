@@ -33,7 +33,7 @@ import Network.TLS.Extra.Cipher
 import Network.URI
 import System.IO
 import System.X509
-import System.Environment (getEnv)
+import System.Environment (lookupEnv)
 import Text.Printf (printf)
 import qualified Data.Aeson.Encode.Pretty
 import qualified Data.ByteString as B
@@ -132,13 +132,16 @@ main = withConfig $ \config@Config
         NoCredentials                          -> return id
         BasicCredentials userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
         ApiKeyCredentials apiKeyEnvVar         -> do
-            apiKey <- liftIO $ getEnv apiKeyEnvVar
-            return $ \req -> req
-                { requestHeaders
-                    = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
-                    : ("X-Management-Request", "true")
-                    : requestHeaders req
-                }
+            maybeApiKey <- lookupEnv apiKeyEnvVar
+            case maybeApiKey of
+                Nothing -> error $ "Environment variable '" ++ apiKeyEnvVar ++ "' not set (maybe run set-cloud-env)"
+                Just apiKey ->
+                    return $ \req -> req
+                        { requestHeaders
+                            = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
+                            : ("X-Management-Request", "true")
+                            : requestHeaders req
+                        }
 
     baseURI <- let
         buildCloudEndpointURI apiRoot deploymentId deploymentRef = case parseAbsoluteURI
