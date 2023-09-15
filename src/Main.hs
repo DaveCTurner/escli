@@ -247,14 +247,14 @@ nodeTypeInstancePrefix NodeTypeInstance   = "instance"
 nodeTypeInstancePrefix NodeTypeTiebreaker = "tiebreaker"
 
 curlCertificateVerificationOption :: CertificateVerificationConfig -> String
-curlCertificateVerificationOption NoCertificateVerificationConfig                     = " -k"
+curlCertificateVerificationOption NoCertificateVerificationConfig                     = " --insecure"
 curlCertificateVerificationOption (CustomCertificateVerificationConfig certStorePath) = " --cacert '" ++ certStorePath ++ "'"
 curlCertificateVerificationOption _                                                   = ""
 
 curlCredentialsOption :: Bool -> CredentialsConfig -> String
 curlCredentialsOption _                   NoCredentials = ""
-curlCredentialsOption esShowCurlPassword (BasicCredentials userString passString) = " -u '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
-curlCredentialsOption _                  (ApiKeyCredentials apiKeyEnvVar)         = " -H \"Authorization: ApiKey $" ++ apiKeyEnvVar ++ "\" -H'X-Management-Request: true'"
+curlCredentialsOption esShowCurlPassword (BasicCredentials userString passString) = " --user '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
+curlCredentialsOption _                  (ApiKeyCredentials apiKeyEnvVar)         = " --header \"Authorization: ApiKey ${" ++ apiKeyEnvVar ++ "}\" --header \"X-Management-Request: true\""
 
 runCommand :: URI -> Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand
