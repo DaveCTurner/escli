@@ -113,6 +113,7 @@ data CredentialsConfig
     = NoCredentials
     | BasicCredentials  String String
     | ApiKeyCredentials String
+    | MacOsKeyringCredentials String String
     deriving (Show, Eq)
 
 credentialsConfigParser :: Parser CredentialsConfig
@@ -131,19 +132,30 @@ credentialsConfigParser
             (  long "api-key"
             <> help "Environment variable holding API key"
             <> metavar "ENVVAR"))
+    <|> (MacOsKeyringCredentials
+        <$> strOption
+            (  long "mac-os-keyring-service"
+            <> help "Name of service to look up in MacOS keyring"
+            <> metavar "SERVICE")
+        <*> strOption
+            (  long "mac-os-keyring-account"
+            <> help "Name of account to look up in MacOS keyring"
+            <> metavar "ACCOUNT"))
     <|> pure NoCredentials
 
 instance FromJSON CredentialsConfig where
     parseJSON = withObject "CredentialsConfig" $ \v -> do
         credType <- v .: "type"
         case credType of
-            "apikey" -> ApiKeyCredentials <$> v .: "var"
-            "basic"  -> BasicCredentials  <$> v .: "user" <*> v .: "pass"
-            _        -> fail $ "unknown credentials type '" ++ credType ++ "'"
+            "apikey"         -> ApiKeyCredentials       <$> v .: "var"
+            "mac-os-keyring" -> MacOsKeyringCredentials <$> v .: "service" <*> v .: "account"
+            "basic"          -> BasicCredentials        <$> v .: "user"    <*> v .: "pass"
+            _                -> fail $ "unknown credentials type '" ++ credType ++ "'"
 
 instance ToJSON CredentialsConfig where
-    toJSON (ApiKeyCredentials var) = object ["type" .= ("apikey" :: String), "var" .= var]
-    toJSON (BasicCredentials  user pass) = object ["type" .= ("basic"  :: String), "user" .= user, "pass" .= pass]
+    toJSON (MacOsKeyringCredentials service account) = object ["type" .= ("mac-os-keyring" :: String), "service" .= service, "account" .= account]
+    toJSON (ApiKeyCredentials       var)             = object ["type" .= ("apikey" :: String),         "var"     .= var]
+    toJSON (BasicCredentials        user pass)       = object ["type" .= ("basic"  :: String),         "user"    .= user, "pass" .= pass]
     toJSON v = error $ "saving credentials " ++ show v ++ " not supported"
 
 data EndpointConfig

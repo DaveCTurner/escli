@@ -26,12 +26,14 @@ dependencies:
 - mtl
 - network-uri
 - optparse-applicative
+- process
 - text
 - time
 - tls
 - x509-store
 - x509-system
 - x509-validation
+- MissingH
 
 executables:
   escli:
