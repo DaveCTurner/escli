@@ -3,6 +3,7 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Main where
 
@@ -114,6 +115,9 @@ main = withConfig $ \config@Config
             CloudDeploymentEndpoint apiRoot _ _ -> case uriAuthority apiRoot of
                 Just URIAuth{..} -> uriRegName
                 Nothing -> error $ "could not extract hostname from URI '" ++ show apiRoot ++ "'"
+            ServerlessProjectEndpoint apiRoot _ -> case uriAuthority apiRoot of
+                Just URIAuth{..} -> uriRegName
+                Nothing -> error $ "could not extract hostname from URI '" ++ show apiRoot ++ "'"
 
         clientParams = (defaultParamsClient hostName B.empty)
             { clientSupported = def
@@ -196,6 +200,26 @@ main = withConfig $ \config@Config
                                     ++ show (deploymentClusterInfoName deploymentClusterInfo)
                                 putStrLn ""
                                 error "deployment has multiple clusters"
+        ServerlessProjectEndpoint apiRoot projectId -> do
+            let getProjectType [] = error $ "could not determine type of project " ++ projectId ++ " at " ++ show apiRoot
+                getProjectType (pt:pts) = do
+                    Just initReq <- return $ parseRequest $ show apiRoot ++ "api/v1/admin/serverless/projects/" ++ pt ++ "/" ++ projectId
+                    getDeploymentResponse <- httpLbs (applyCredentials initReq {method="GET"}) manager
+                    if
+                        | responseStatus getDeploymentResponse == ok200       -> return pt
+                        | responseStatus getDeploymentResponse == notFound404 -> getProjectType pts
+                        | otherwise                                           -> error $ show getDeploymentResponse
+            projectType <- getProjectType ["security", "observability", "elasticsearch"]
+            return $ case parseAbsoluteURI
+                $ show apiRoot
+                ++ "api/v1/admin/serverless/projects/"
+                ++ projectType
+                ++ "/"
+                ++ projectId
+                ++ "/_proxy/"
+                of
+                    Nothing -> error "could not construct cloud URI"
+                    Just uri -> uri
 
     when esSaveConnectionConfig $
         if esEndpointConfig == DefaultEndpoint && esCredentialsConfig == NoCredentials

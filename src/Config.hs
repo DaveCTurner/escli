@@ -160,8 +160,9 @@ instance ToJSON CredentialsConfig where
 
 data EndpointConfig
     = DefaultEndpoint
-    | URIEndpoint             URI
-    | CloudDeploymentEndpoint URI String (Maybe String)
+    | URIEndpoint               URI
+    | CloudDeploymentEndpoint   URI String (Maybe String)
+    | ServerlessProjectEndpoint URI String
     deriving (Show, Eq)
 
 data ConnectionConfig = ConnectionConfig
@@ -211,6 +212,33 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
                 }
             Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
 
+serverlessProjectEndpointConfigParser :: Parser ConnectionConfig
+serverlessProjectEndpointConfigParser = buildConnectionConfig
+    <$> strOption
+        (  long "project"
+        <> help "Cloud serverless project ID"
+        <> metavar "PROJECT-ID")
+    <*> strOption
+        (  long "cloud-api-root"
+        <> help "URL of root Cloud API endpoint"
+        <> metavar "URL"
+        <> value "https://admin.found.no/"
+        <> showDefault)
+    <*> strOption
+        (  long "api-key"
+        <> help "Environment variable holding API key"
+        <> metavar "ENVVAR"
+        <> value "API_KEY"
+        <> showDefault)
+    where
+        buildConnectionConfig projectId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
+            Just apiRoot -> ConnectionConfig
+                { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
+                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
+                }
+            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
+
 instance FromJSON ConnectionConfig where
     parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig
         <$> (uriFromString =<< (v .: "baseuri"))
@@ -239,7 +267,7 @@ data Config = Config
 
 configParser :: Parser Config
 configParser = Config
-    <$> (cloudDeploymentEndpointConfigParser <|> uriEndpointConfigParser)
+    <$> (cloudDeploymentEndpointConfigParser <|> serverlessProjectEndpointConfigParser <|> uriEndpointConfigParser)
     <*> generalConfigParser
 
 configParserInfo :: ParserInfo Config
