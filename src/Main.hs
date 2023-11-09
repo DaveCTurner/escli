@@ -158,16 +158,7 @@ main = withConfig $ \config@Config
                 }
 
     baseURI <- let
-        buildCloudEndpointURI apiRoot deploymentId deploymentRef = case parseAbsoluteURI
-            $ show apiRoot
-            ++ "api/v1/deployments/"
-            ++ deploymentId
-            ++ "/elasticsearch/"
-            ++ deploymentRef
-            ++ "/proxy/"
-            of
-                Nothing -> error "could not construct cloud URI"
-                Just uri -> uri
+        buildCloudEndpointURI apiRoot deploymentId deploymentRef = unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
         in case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
         URIEndpoint baseURI                                -> return baseURI
@@ -179,7 +170,7 @@ main = withConfig $ \config@Config
             case maybeDeploymentRef of
                 Just deploymentRef -> return $ buildCloudEndpointURI apiRoot deploymentId deploymentRef
                 Nothing -> do
-                    Just initReq <- return $ parseRequest $ show apiRoot ++ "/api/v1/deployments/" ++ deploymentId
+                    Just initReq <- return $ parseURIRequest $ apiRoot ~// "api/v1/deployments" ~. deploymentId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
                     when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
                     case eitherDecode' (responseBody getDeploymentResponse) of
@@ -203,23 +194,14 @@ main = withConfig $ \config@Config
         ServerlessProjectEndpoint apiRoot projectId -> do
             let getProjectType [] = error $ "could not determine type of project " ++ projectId ++ " at " ++ show apiRoot
                 getProjectType (pt:pts) = do
-                    Just initReq <- return $ parseRequest $ show apiRoot ++ "api/v1/admin/serverless/projects/" ++ pt ++ "/" ++ projectId
+                    Just initReq <- return $ parseURIRequest $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ pt ~. projectId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq {method="GET"}) manager
                     if
                         | responseStatus getDeploymentResponse == ok200       -> return pt
                         | responseStatus getDeploymentResponse == notFound404 -> getProjectType pts
                         | otherwise                                           -> error $ show getDeploymentResponse
             projectType <- getProjectType ["security", "observability", "elasticsearch"]
-            return $ case parseAbsoluteURI
-                $ show apiRoot
-                ++ "api/v1/admin/serverless/projects/"
-                ++ projectType
-                ++ "/"
-                ++ projectId
-                ++ "/_proxy/"
-                of
-                    Nothing -> error "could not construct cloud URI"
-                    Just uri -> uri
+            return $ unwrapURI $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ projectType ~/ projectId ~/ "_proxy"
 
     when esSaveConnectionConfig $
         if esEndpointConfig == DefaultEndpoint && esCredentialsConfig == NoCredentials
@@ -264,6 +246,27 @@ main = withConfig $ \config@Config
                      .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
                             putStrLn consoleEntry
                             writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
+
+(~.) :: Maybe URI -> String -> Maybe URI
+maybeBaseUri ~. relPath = do
+    baseUri <- maybeBaseUri
+    relRef  <- parseRelativeReference $ relPath
+    return $ relRef `relativeTo` baseUri
+
+(~/) :: Maybe URI -> String -> Maybe URI
+base ~/ relPath = base ~. (relPath ++ "/")
+
+(~//) :: URI -> String -> Maybe URI
+base ~// relPath = Just base ~/ relPath
+
+unwrapURI :: Maybe URI -> URI
+unwrapURI Nothing  = error "could not parse URI"
+unwrapURI (Just u) = u
+
+parseURIRequest :: Maybe URI -> Maybe Request
+parseURIRequest maybeURI = do
+    uri <- maybeURI
+    parseRequest $ show uri
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v
