@@ -104,11 +104,11 @@ data HeapDumpDetails = HeapDumpDetails
 
 instance FromJSON HeapDumpDetails where
     parseJSON = withObject "HeapDumpDetails" $ \v -> HeapDumpDetails
-        <$> v .: "instance_id"
-        <*> v .: "size"
-        <*> v .: "type"
-        <*> v .: "status"
-        <*> v .: "captured"
+        <$> v .:  "instance_id"
+        <*> v .:? "size" .!= 0
+        <*> v .:  "type"
+        <*> v .:  "status"
+        <*> v .:  "captured"
 
 data RefHeapDumps = RefHeapDumps String [HeapDumpDetails] deriving (Show, Eq)
 
