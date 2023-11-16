@@ -95,12 +95,15 @@ generalConfigParser = GeneralConfig
 data NodeType = NodeTypeInstance | NodeTypeTiebreaker deriving (Show, Eq)
 
 data OneShotCommandConfig
-    = ThreadDumpNode NodeType Int
+    = OneShotApiCall String String
+    | ThreadDumpNode NodeType Int
+    | HeapDumpList
     deriving (Show, Eq)
 
 oneShotCommandConfigParser :: Parser OneShotCommandConfig
 oneShotCommandConfigParser
-    =   (ThreadDumpNode NodeTypeInstance <$> option auto
+    =   oneShotApiCallParser
+    <|> (ThreadDumpNode NodeTypeInstance <$> option auto
             (  long "thread-dump"
             <> help "Capture thread dump of node"
             <> metavar "INSTANCE-ID"))
@@ -108,6 +111,17 @@ oneShotCommandConfigParser
             (  long "thread-dump-tiebreaker"
             <> help "Capture thread dump of tiebreaker node"
             <> metavar "INSTANCE-ID"))
+    <|> (flag' HeapDumpList
+            (  long "heap-dumps"
+            <> help "List available heap dumps"))
+
+oneShotApiCallParser :: Parser OneShotCommandConfig
+oneShotApiCallParser = OneShotApiCall
+    <$> argument
+            (maybeReader $ \s -> if s == "GET" || s == "POST" || s == "HEAD" then Just s else Nothing)
+            (  help "HTTP verb (GET|POST|HEAD)"
+            <> metavar "VERB")
+    <*> argument str (help "Request URL" <> metavar "URL")
 
 data CredentialsConfig
     = NoCredentials

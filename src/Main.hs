@@ -94,6 +94,38 @@ data DeploymentClusterInfo = DeploymentClusterInfo { deploymentClusterInfoName :
 instance FromJSON DeploymentClusterInfo where
     parseJSON = withObject "DeploymentClusterInfo" $ \v -> DeploymentClusterInfo <$> v .: "cluster_name"
 
+data HeapDumpDetails = HeapDumpDetails
+    { heapDumpInstanceId  :: String
+    , heapDumpSize        :: Integer
+    , heapDumpType        :: String
+    , heapDumpStatus      :: String
+    , heapDumpCaptureTime :: String
+    } deriving (Show, Eq)
+
+instance FromJSON HeapDumpDetails where
+    parseJSON = withObject "HeapDumpDetails" $ \v -> HeapDumpDetails
+        <$> v .: "instance_id"
+        <*> v .: "size"
+        <*> v .: "type"
+        <*> v .: "status"
+        <*> v .: "captured"
+
+data RefHeapDumps = RefHeapDumps String [HeapDumpDetails] deriving (Show, Eq)
+
+instance FromJSON RefHeapDumps where
+    parseJSON = withObject "RefHeapDumps" $ \v -> RefHeapDumps
+        <$> v .: "ref_id"
+        <*> v .: "heap_dumps"
+
+data HeapDumpsResponse = HeapDumpsResponse [RefHeapDumps] deriving (Show, Eq)
+
+instance FromJSON HeapDumpsResponse where
+    parseJSON = withObject "HeapDumpsResponse" $ \v -> HeapDumpsResponse
+        <$> v .: "elasticsearch"
+
+parseHeapDumpsResponse :: BL.ByteString -> HeapDumpsResponse
+parseHeapDumpsResponse = either error id . eitherDecode
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
@@ -211,6 +243,28 @@ main = withConfig $ \config@Config
                 putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
 
     case esOneShotCommand of
+        Just HeapDumpList -> do
+            let captureURI = let s = "../../../heap_dumps"
+                                 r = fromMaybe (error s) $ parseRelativeReference s
+                             in show $ r `relativeTo` baseURI
+                initReq = fromMaybe (error captureURI) $ parseRequest captureURI
+                req = applyCredentials initReq
+            putStrLn $ "# curl --silent -XGET"
+                ++ curlCertificateVerificationOption esCertificateVerificationConfig
+                ++ curlCredentialsOption             False esCredentialsConfig
+                ++ " "
+                ++ show captureURI
+            HeapDumpsResponse refHeapDumps <- parseHeapDumpsResponse . responseBody <$> httpLbs req manager
+            forM_ refHeapDumps $ \(RefHeapDumps refId heapDumps) -> forM_ heapDumps $ \HeapDumpDetails{..} ->
+                let s = printf "../../%s/instances/%s/heap_dump/_download" refId heapDumpInstanceId
+                    r = fromMaybe (error s) $ parseRelativeReference s
+                    c = "curl -OJ"
+                        ++ curlCertificateVerificationOption esCertificateVerificationConfig
+                        ++ curlCredentialsOption             False esCredentialsConfig
+                        ++ " "
+                        ++ show (r `relativeTo` baseURI)
+                in putStrLn $ printf "%s %12d %s" heapDumpCaptureTime heapDumpSize c
+
         Just (ThreadDumpNode nodeType nodeIndex) -> do
             let captureURI = let s = printf "../instances/%s-%010d/thread_dump/_capture" (nodeTypeInstancePrefix nodeType) nodeIndex
                                  r = fromMaybe (error s) $ parseRelativeReference s
@@ -233,7 +287,9 @@ main = withConfig $ \config@Config
                         go
                 in go
 
-        _ -> do
+        Just (OneShotApiCall _verb _requestUri) -> error "not implemented"
+
+        Nothing -> do
             putStrLn $ "# Server URI: " ++ show baseURI
             putStrLn $ ""
 
