@@ -287,11 +287,10 @@ main = withConfig $ \config@Config
                         go
                 in go
 
-        Just (OneShotApiCall _verb _requestUri) -> error "not implemented"
-
         Nothing -> do
-            putStrLn $ "# Server URI: " ++ show baseURI
-            putStrLn $ ""
+            unless esOnlyResponse $ do
+                putStrLn $ "# Server URI: " ++ show baseURI
+                putStrLn $ ""
 
             withMaybeLogFile esLogFile $ \writeLog ->
                 runConduit
@@ -390,7 +389,7 @@ runCommand
 
     before <- liftIO getCurrentTime
 
-    yield $ execWriter $ do
+    unless esOnlyResponse $ yield $ execWriter $ do
         unless esHideHeadings $ do
             tellLn $ "# " ++ replicate 40 '='
             tellLn   "# Request: "
@@ -420,7 +419,9 @@ runCommand
     response <- liftIO $ httpLbs req manager
     after <- liftIO getCurrentTime
 
-    yield $ execWriter $ do
+    if esOnlyResponse
+      then liftIO $ BL.hPutStr stdout $ responseBody response
+      else yield $ execWriter $ do
         unless esHideHeadings $ do
             tellLn $ "# " ++ replicate 40 '-'
             tellLn "# Response: "

@@ -14,6 +14,7 @@ module Config
     , configFileName
     ) where
 
+import Control.Monad (unless)
 import Options.Applicative
 import Network.URI
 import System.FilePath
@@ -31,6 +32,7 @@ data GeneralConfig = GeneralConfig
     , esHideCurlEquivalent      :: Bool
     , esShowCurlPassword        :: Bool
     , esHideDeprecationWarnings :: Bool
+    , esOnlyResponse            :: Bool
     , esSaveConnectionConfig    :: Bool
     , esMaxResponseLines        :: Int
     , esLogFile                 :: Maybe FilePath
@@ -75,6 +77,9 @@ generalConfigParser = GeneralConfig
         (  long "hide-deprecation-warnings"
         <> help "Hide deprecation warnings")
     <*> switch
+        (  long "only-response"
+        <> help "Only emit raw response")
+    <*> switch
         (  long "save"
         <> help ("Save connection config to '" ++ configFileName ++ "' for future invocations"))
     <*> (flag' (-1)
@@ -95,15 +100,13 @@ generalConfigParser = GeneralConfig
 data NodeType = NodeTypeInstance | NodeTypeTiebreaker deriving (Show, Eq)
 
 data OneShotCommandConfig
-    = OneShotApiCall String String
-    | ThreadDumpNode NodeType Int
+    = ThreadDumpNode NodeType Int
     | HeapDumpList
     deriving (Show, Eq)
 
 oneShotCommandConfigParser :: Parser OneShotCommandConfig
 oneShotCommandConfigParser
-    =   oneShotApiCallParser
-    <|> (ThreadDumpNode NodeTypeInstance <$> option auto
+    =   (ThreadDumpNode NodeTypeInstance <$> option auto
             (  long "thread-dump"
             <> help "Capture thread dump of node"
             <> metavar "INSTANCE-ID"))
@@ -114,14 +117,6 @@ oneShotCommandConfigParser
     <|> (flag' HeapDumpList
             (  long "heap-dumps"
             <> help "List available heap dumps"))
-
-oneShotApiCallParser :: Parser OneShotCommandConfig
-oneShotApiCallParser = OneShotApiCall
-    <$> argument
-            (maybeReader $ \s -> if s == "GET" || s == "POST" || s == "HEAD" then Just s else Nothing)
-            (  help "HTTP verb (GET|POST|HEAD)"
-            <> metavar "VERB")
-    <*> argument str (help "Request URL" <> metavar "URL")
 
 data CredentialsConfig
     = NoCredentials
@@ -316,7 +311,7 @@ withConfig go = do
                     case fileConfigOrError of
                         Left msg -> error msg
                         Right fileConfig -> do
-                            putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
+                            unless (esOnlyResponse $ esGeneralConfig argsConfig) $ putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
                             return argsConfig {esConnectionConfig = fileConfig}
         else return argsConfig
     go config
