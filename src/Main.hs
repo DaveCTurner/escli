@@ -8,6 +8,7 @@
 module Main where
 
 import Config
+import Config.File
 import Control.Monad
 import Control.Monad.Writer
 import Data.Aeson

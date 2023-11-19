@@ -39,6 +39,8 @@ library:
   source-dirs: lib
   exposed-modules:
   - Config
+  - Config.Parser
+  - Config.File
   - ESCommand
 
 executables:
