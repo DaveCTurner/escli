@@ -198,18 +198,15 @@ main = withConfig $ \config@Config
                 deploymentId = if deploymentURIPrefix `isPrefixOf` deploymentIdString
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
-                buildCloudEndpointURI deploymentRef = unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
-            case maybeDeploymentRef of
-                Just deploymentRef -> return $ buildCloudEndpointURI deploymentRef
-                Nothing -> do
-                    Just initReq <- return $ parseURIRequest $ apiRoot ~// "api/v1/deployments" ~. deploymentId
+                lookupDeploymentRef = do
+                    let initReq = maybe (error $ "error parsing URL for deployment " ++ deploymentId) id $ parseURIRequest $ apiRoot ~// "api/v1/deployments" ~. deploymentId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
                     when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
                     case eitherDecode' (responseBody getDeploymentResponse) of
                         Left msg -> error msg
                         Right (DeploymentDetails (DeploymentResourceDetails clusters)) -> case clusters of
                             [] -> error $ "no clusters found for deployment " ++ deploymentId
-                            [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI deploymentClusterRefId
+                            [DeploymentClusterDetails{..}] -> return deploymentClusterRefId
                             _ -> do
                                 putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
                                 forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
@@ -223,6 +220,9 @@ main = withConfig $ \config@Config
                                     ++ show (deploymentClusterInfoName deploymentClusterInfo)
                                 putStrLn ""
                                 error "deployment has multiple clusters"
+            deploymentRef <- maybe lookupDeploymentRef return maybeDeploymentRef
+            return $ unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
+
         ServerlessProjectEndpoint apiRoot projectId -> do
             let getProjectType [] = error $ "could not determine type of project " ++ projectId ++ " at " ++ show apiRoot
                 getProjectType (pt:pts) = do
