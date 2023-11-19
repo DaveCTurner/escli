@@ -87,12 +87,9 @@ withConfig go = do
             case maybeConfigFilePath of
                 Nothing -> return argsConfig
                 Just configFilePath -> do
-                    fileConfigOrError <- eitherDecodeFileStrict' configFilePath
-                    case fileConfigOrError of
-                        Left msg -> error msg
-                        Right (JsonConnection fileConfig) -> do
-                            unless (esOnlyResponse $ esGeneralConfig argsConfig) $ putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
-                            return argsConfig {esConnectionConfig = fileConfig}
+                    fileConfig <- either error _unJsonConnection <$> eitherDecodeFileStrict' configFilePath
+                    unless (esOnlyResponse $ esGeneralConfig argsConfig) $ putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
+                    return argsConfig {esConnectionConfig = fileConfig}
         else return argsConfig
     go config
 
