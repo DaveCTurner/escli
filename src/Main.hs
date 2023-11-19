@@ -190,9 +190,7 @@ main = withConfig $ \config@Config
                     : requestHeaders req
                 }
 
-    baseURI <- let
-        buildCloudEndpointURI apiRoot deploymentId deploymentRef = unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
-        in case esEndpointConfig of
+    baseURI <- case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
         URIEndpoint baseURI                                -> return baseURI
         CloudDeploymentEndpoint apiRoot deploymentIdString maybeDeploymentRef -> do
@@ -200,8 +198,9 @@ main = withConfig $ \config@Config
                 deploymentId = if deploymentURIPrefix `isPrefixOf` deploymentIdString
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
+                buildCloudEndpointURI deploymentRef = unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
             case maybeDeploymentRef of
-                Just deploymentRef -> return $ buildCloudEndpointURI apiRoot deploymentId deploymentRef
+                Just deploymentRef -> return $ buildCloudEndpointURI deploymentRef
                 Nothing -> do
                     Just initReq <- return $ parseURIRequest $ apiRoot ~// "api/v1/deployments" ~. deploymentId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
@@ -210,7 +209,7 @@ main = withConfig $ \config@Config
                         Left msg -> error msg
                         Right (DeploymentDetails (DeploymentResourceDetails clusters)) -> case clusters of
                             [] -> error $ "no clusters found for deployment " ++ deploymentId
-                            [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI apiRoot deploymentId deploymentClusterRefId
+                            [DeploymentClusterDetails{..}] -> return $ buildCloudEndpointURI deploymentClusterRefId
                             _ -> do
                                 putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
                                 forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
