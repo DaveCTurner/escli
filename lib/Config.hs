@@ -12,13 +12,7 @@ module Config
     , NodeType(..)
     ) where
 
-import Control.Monad (unless)
-import Options.Applicative
 import Network.URI
-import System.FilePath
-import System.Directory
-import Data.Aeson
-import qualified Data.Aeson.Types as Aeson
 
 data GeneralConfig = GeneralConfig
     { esHideTiming              :: Bool

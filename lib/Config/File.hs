@@ -3,24 +3,28 @@
 
 module Config.File
     ( withConfig
-    , configFileName
+    , saveConfigFile
     ) where
 
 import Config
 import Config.Parser
 import Control.Monad (unless)
+import Data.Aeson
+import Data.Maybe
 import Options.Applicative
 import Network.URI
-import System.FilePath
 import System.Directory
-import Data.Aeson
+import System.Environment (lookupEnv)
+import System.FilePath
 import qualified Data.Aeson.Types as Aeson
 
 configFileName :: FilePath
 configFileName = "escli_config.json"
 
-instance FromJSON CredentialsConfig where
-    parseJSON = withObject "CredentialsConfig" $ \v -> do
+newtype JsonCredentials = JsonCredentials { _unJsonCredentials :: CredentialsConfig }
+
+instance FromJSON JsonCredentials where
+    parseJSON = withObject "JsonCredentials" $ \v -> JsonCredentials <$> do
         credType <- v .: "type"
         case credType of
             "apikey"         -> ApiKeyCredentials       <$> v .: "var"
@@ -28,32 +32,34 @@ instance FromJSON CredentialsConfig where
             "basic"          -> BasicCredentials        <$> v .: "user"    <*> v .: "pass"
             _                -> fail $ "unknown credentials type '" ++ credType ++ "'"
 
-instance ToJSON CredentialsConfig where
-    toJSON (MacOsKeyringCredentials service account) = object ["type" .= ("mac-os-keyring" :: String), "service" .= service, "account" .= account]
-    toJSON (ApiKeyCredentials       var)             = object ["type" .= ("apikey" :: String),         "var"     .= var]
-    toJSON (BasicCredentials        user pass)       = object ["type" .= ("basic"  :: String),         "user"    .= user, "pass" .= pass]
-    toJSON v = error $ "saving credentials " ++ show v ++ " not supported"
+instance ToJSON JsonCredentials where
+    toJSON (JsonCredentials (MacOsKeyringCredentials service account)) = object ["type" .= ("mac-os-keyring" :: String), "service" .= service, "account" .= account]
+    toJSON (JsonCredentials (ApiKeyCredentials       var))             = object ["type" .= ("apikey" :: String),         "var"     .= var]
+    toJSON (JsonCredentials (BasicCredentials        user pass))       = object ["type" .= ("basic"  :: String),         "user"    .= user, "pass" .= pass]
+    toJSON (JsonCredentials v) = error $ "saving credentials " ++ show v ++ " not supported"
 
-instance FromJSON ConnectionConfig where
-    parseJSON = withObject "ConnectionConfig" $ \v -> ConnectionConfig
-        <$> (uriFromString =<< (v .: "baseuri"))
-        <*> (v .: "credentials")
-        <*> (maybe DefaultCertificateVerificationConfig CustomCertificateVerificationConfig <$> (v .:! "certFile"))
+newtype JsonConnection = JsonConnection { _unJsonConnection :: ConnectionConfig }
+
+instance FromJSON JsonConnection where
+    parseJSON = withObject "ConnectionConfig" $ \v -> JsonConnection <$> (ConnectionConfig
+        <$> (uriFromString      =<< (v .: "baseuri"))
+        <*> (_unJsonCredentials <$> (v .: "credentials"))
+        <*> (maybe DefaultCertificateVerificationConfig CustomCertificateVerificationConfig <$> (v .:! "certFile")))
         where
             uriFromString :: String -> Aeson.Parser EndpointConfig
             uriFromString s = case parseAbsoluteURI s of
                 Just u  -> pure $ URIEndpoint u
                 Nothing -> fail $ "could not parse URI '" ++ s ++ "'"
 
-instance ToJSON ConnectionConfig where
-    toJSON ConnectionConfig{esEndpointConfig = URIEndpoint esBaseURI,..} = object $
+instance ToJSON JsonConnection where
+    toJSON (JsonConnection ConnectionConfig{esEndpointConfig = URIEndpoint esBaseURI,..}) = object $
         [ "baseuri"     .= show esBaseURI
-        , "credentials" .= esCredentialsConfig
+        , "credentials" .= JsonCredentials esCredentialsConfig
         ] ++ (case esCertificateVerificationConfig of
                 DefaultCertificateVerificationConfig -> []
                 CustomCertificateVerificationConfig file -> ["certFile" .= file]
                 _ -> error ("saving cert verification config " ++ show esCertificateVerificationConfig ++ " not supported"))
-    toJSON cc = error $ "saving connection config " ++ show cc ++ " not supported"
+    toJSON (JsonConnection cc) = error $ "saving connection config " ++ show cc ++ " not supported"
 
 findConfigFile :: IO (Maybe FilePath)
 findConfigFile = go =<< getCurrentDirectory
@@ -70,8 +76,10 @@ findConfigFile = go =<< getCurrentDirectory
 
 withConfig :: (Config -> IO a) -> IO a
 withConfig go = do
+    envUrlEnvVar <- lookupEnv "ENV_URL"
     argsConfig <- execParser $ configParserInfo ConfigParserContext
         { configParserContextFileName = configFileName
+        , configParserContextApiRoot  = fromMaybe "unset" envUrlEnvVar
         }
     config <- if esConnectionConfig argsConfig == ConnectionConfig DefaultEndpoint NoCredentials DefaultCertificateVerificationConfig
         then do
@@ -82,8 +90,13 @@ withConfig go = do
                     fileConfigOrError <- eitherDecodeFileStrict' configFilePath
                     case fileConfigOrError of
                         Left msg -> error msg
-                        Right fileConfig -> do
+                        Right (JsonConnection fileConfig) -> do
                             unless (esOnlyResponse $ esGeneralConfig argsConfig) $ putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
                             return argsConfig {esConnectionConfig = fileConfig}
         else return argsConfig
     go config
+
+saveConfigFile :: ConnectionConfig -> IO FilePath
+saveConfigFile connectionConfig = do
+    encodeFile configFileName $ JsonConnection connectionConfig
+    return configFileName

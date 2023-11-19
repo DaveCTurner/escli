@@ -240,7 +240,7 @@ main = withConfig $ \config@Config
         if esEndpointConfig == DefaultEndpoint && esCredentialsConfig == NoCredentials
             then error "no connection config given, nothing to save"
             else do
-                encodeFile configFileName $ (esConnectionConfig config) {esEndpointConfig = URIEndpoint baseURI}
+                configFileName <- saveConfigFile (esConnectionConfig config) {esEndpointConfig = URIEndpoint baseURI}
                 putStrLn $ "# Saved connection config to '" ++ configFileName ++ "'"
 
     case esOneShotCommand of

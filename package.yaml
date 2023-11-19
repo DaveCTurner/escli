@@ -42,6 +42,8 @@ library:
   - Config.Parser
   - Config.File
   - ESCommand
+  ghc-options:
+  - -Wall -Werror
 
 executables:
   escli:

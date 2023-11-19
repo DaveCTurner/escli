@@ -7,16 +7,12 @@ module Config.Parser
     ) where
 
 import Config
-import Control.Monad (unless)
 import Options.Applicative
 import Network.URI
-import System.FilePath
-import System.Directory
-import Data.Aeson
-import qualified Data.Aeson.Types as Aeson
 
 data ConfigParserContext = ConfigParserContext
   { configParserContextFileName :: String
+  , configParserContextApiRoot  :: String
   } deriving (Show, Eq)
 
 certificateVerificationConfigParser :: Parser CertificateVerificationConfig
@@ -122,8 +118,8 @@ uriEndpointConfigParser = ConnectionConfig
     <*> credentialsConfigParser
     <*> certificateVerificationConfigParser
 
-cloudDeploymentEndpointConfigParser :: Parser ConnectionConfig
-cloudDeploymentEndpointConfigParser = buildConnectionConfig
+cloudDeploymentEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
+cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
     <$> strOption
         (  long "deployment"
         <> help "Cloud deployment ID"
@@ -136,7 +132,7 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
         (  long "cloud-api-root"
         <> help "URL of root Cloud API endpoint"
         <> metavar "URL"
-        <> value "https://admin.found.no/"
+        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
         <> showDefault)
     <*> strOption
         (  long "api-key"
@@ -153,8 +149,8 @@ cloudDeploymentEndpointConfigParser = buildConnectionConfig
                 }
             Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
 
-serverlessProjectEndpointConfigParser :: Parser ConnectionConfig
-serverlessProjectEndpointConfigParser = buildConnectionConfig
+serverlessProjectEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
+serverlessProjectEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
     <$> strOption
         (  long "project"
         <> help "Cloud serverless project ID"
@@ -163,7 +159,7 @@ serverlessProjectEndpointConfigParser = buildConnectionConfig
         (  long "cloud-api-root"
         <> help "URL of root Cloud API endpoint"
         <> metavar "URL"
-        <> value "https://admin.found.no/"
+        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
         <> showDefault)
     <*> strOption
         (  long "api-key"
@@ -182,7 +178,10 @@ serverlessProjectEndpointConfigParser = buildConnectionConfig
 
 configParser :: ConfigParserContext -> Parser Config
 configParser configParserContext = Config
-    <$> (cloudDeploymentEndpointConfigParser <|> serverlessProjectEndpointConfigParser <|> uriEndpointConfigParser)
+    <$> (   cloudDeploymentEndpointConfigParser   configParserContext
+        <|> serverlessProjectEndpointConfigParser configParserContext
+        <|> uriEndpointConfigParser
+        )
     <*> generalConfigParser configParserContext
 
 configParserInfo :: ConfigParserContext -> ParserInfo Config
