@@ -199,7 +199,7 @@ main = withConfig $ \config@Config
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
                 lookupDeploymentRef = do
-                    let initReq = maybe (error $ "error parsing URL for deployment " ++ deploymentId) id $ parseURIRequest $ apiRoot ~// "api/v1/deployments" ~. deploymentId
+                    let initReq = parseURIRequest "deployment metadata" $ apiRoot ~// "api/v1/deployments" ~. deploymentId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
                     when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
                     case eitherDecode' (responseBody getDeploymentResponse) of
@@ -226,7 +226,7 @@ main = withConfig $ \config@Config
         ServerlessProjectEndpoint apiRoot projectId -> do
             let getProjectType [] = error $ "could not determine type of project " ++ projectId ++ " at " ++ show apiRoot
                 getProjectType (pt:pts) = do
-                    Just initReq <- return $ parseURIRequest $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ pt ~. projectId
+                    let initReq = parseURIRequest "project metadata" $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ pt ~. projectId
                     getDeploymentResponse <- httpLbs (applyCredentials initReq {method="GET"}) manager
                     if
                         | responseStatus getDeploymentResponse == ok200       -> return pt
@@ -318,8 +318,8 @@ unwrapURI :: Maybe URI -> URI
 unwrapURI Nothing  = error "could not parse URI"
 unwrapURI (Just u) = u
 
-parseURIRequest :: Maybe URI -> Maybe Request
-parseURIRequest maybeURI = do
+parseURIRequest :: String -> Maybe URI -> Request
+parseURIRequest context maybeURI = maybe (error $ context ++ ": failed to parse URI " ++ show maybeURI) id $ do
     uri <- maybeURI
     parseRequest $ show uri
 
