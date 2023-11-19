@@ -319,9 +319,10 @@ unwrapURI Nothing  = error "could not parse URI"
 unwrapURI (Just u) = u
 
 parseURIRequest :: String -> Maybe URI -> Request
-parseURIRequest context maybeURI = maybe (error $ context ++ ": failed to parse URI " ++ show maybeURI) id $ do
-    uri <- maybeURI
-    parseRequest $ show uri
+parseURIRequest context maybeURI = either contextError id $ do
+    uri <- maybe (Left "missing URI given") Right maybeURI
+    maybe (Left "failed to parse request") Right $ parseRequest $ show uri
+    where contextError m = error $ context ++ ": " ++ m
 
 prettyStringFromJson :: ToJSON a => a -> String
 prettyStringFromJson v
