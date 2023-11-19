@@ -21,7 +21,7 @@ import qualified Data.Aeson.Types as Aeson
 configFileName :: FilePath
 configFileName = "escli_config.json"
 
-newtype JsonCredentials = JsonCredentials { _unJsonCredentials :: CredentialsConfig }
+newtype JsonCredentials = JsonCredentials { unJsonCredentials :: CredentialsConfig }
 
 instance FromJSON JsonCredentials where
     parseJSON = withObject "JsonCredentials" $ \v -> JsonCredentials <$> do
@@ -38,12 +38,12 @@ instance ToJSON JsonCredentials where
     toJSON (JsonCredentials (BasicCredentials        user pass))       = object ["type" .= ("basic"  :: String),         "user"    .= user, "pass" .= pass]
     toJSON (JsonCredentials v) = error $ "saving credentials " ++ show v ++ " not supported"
 
-newtype JsonConnection = JsonConnection { _unJsonConnection :: ConnectionConfig }
+newtype JsonConnection = JsonConnection { unJsonConnection :: ConnectionConfig }
 
 instance FromJSON JsonConnection where
     parseJSON = withObject "ConnectionConfig" $ \v -> JsonConnection <$> (ConnectionConfig
         <$> (uriFromString      =<< (v .: "baseuri"))
-        <*> (_unJsonCredentials <$> (v .: "credentials"))
+        <*> (unJsonCredentials <$> (v .: "credentials"))
         <*> (maybe DefaultCertificateVerificationConfig CustomCertificateVerificationConfig <$> (v .:! "certFile")))
         where
             uriFromString :: String -> Aeson.Parser EndpointConfig
@@ -87,7 +87,7 @@ withConfig go = do
             case maybeConfigFilePath of
                 Nothing -> return argsConfig
                 Just configFilePath -> do
-                    fileConfig <- either error _unJsonConnection <$> eitherDecodeFileStrict' configFilePath
+                    fileConfig <- either error unJsonConnection <$> eitherDecodeFileStrict' configFilePath
                     unless (esOnlyResponse $ esGeneralConfig argsConfig) $ putStrLn $ "# Loaded connection config from '" ++ configFilePath ++ "'"
                     return argsConfig {esConnectionConfig = fileConfig}
         else return argsConfig

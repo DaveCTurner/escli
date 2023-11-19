@@ -15,6 +15,115 @@ data ConfigParserContext = ConfigParserContext
   , configParserContextApiRoot  :: String
   } deriving (Show, Eq)
 
+configParserInfo :: ConfigParserContext -> ParserInfo Config
+configParserInfo configParserContext = info (configParser configParserContext <**> helper)
+    (fullDesc
+        <> progDesc "Interact with Elasticsearch from the shell"
+        <> header "escli - Interact with Elasticsearch from the shell")
+
+configParser :: ConfigParserContext -> Parser Config
+configParser configParserContext = Config
+    <$> (   cloudDeploymentEndpointConfigParser   configParserContext
+        <|> serverlessProjectEndpointConfigParser configParserContext
+        <|> uriEndpointConfigParser
+        )
+    <*> generalConfigParser configParserContext
+
+cloudDeploymentEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
+cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
+    <$> strOption
+        (  long "deployment"
+        <> help "Cloud deployment ID"
+        <> metavar "DEPLOYMENT-ID")
+    <*> optional (strOption
+        (  long "deployment-ref"
+        <> help "Cloud deployment reference"
+        <> metavar "REF-ID"))
+    <*> strOption
+        (  long "cloud-api-root"
+        <> help "URL of root Cloud API endpoint"
+        <> metavar "URL"
+        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
+        <> showDefault)
+    <*> strOption
+        (  long "api-key"
+        <> help "Environment variable holding API key"
+        <> metavar "ENVVAR"
+        <> value "API_KEY"
+        <> showDefault)
+    where
+        buildConnectionConfig deploymentId deploymentRefId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
+            Just apiRoot -> ConnectionConfig
+                { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
+                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
+                }
+            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
+
+serverlessProjectEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
+serverlessProjectEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
+    <$> strOption
+        (  long "project"
+        <> help "Cloud serverless project ID"
+        <> metavar "PROJECT-ID")
+    <*> strOption
+        (  long "cloud-api-root"
+        <> help "URL of root Cloud API endpoint"
+        <> metavar "URL"
+        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
+        <> showDefault)
+    <*> strOption
+        (  long "api-key"
+        <> help "Environment variable holding API key"
+        <> metavar "ENVVAR"
+        <> value "API_KEY"
+        <> showDefault)
+    where
+        buildConnectionConfig projectId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
+            Just apiRoot -> ConnectionConfig
+                { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
+                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
+                }
+            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
+
+uriEndpointConfigParser :: Parser ConnectionConfig
+uriEndpointConfigParser = ConnectionConfig
+    <$> (URIEndpoint <$> option (maybeReader parseAbsoluteURI)
+        (  long "server"
+        <> help "Base HTTP URI of the Elasticsearch server"
+        <> metavar "ADDR")
+        <|> pure DefaultEndpoint)
+    <*> credentialsConfigParser
+    <*> certificateVerificationConfigParser
+
+credentialsConfigParser :: Parser CredentialsConfig
+credentialsConfigParser
+    = (BasicCredentials
+        <$> strOption
+            (  long "username"
+            <> help "Elasticsearch username, for security-enabled clusters"
+            <> metavar "USERNAME")
+        <*> strOption
+            (  long "password"
+            <> help "Elasticsearch password, for security-enabled clusters"
+            <> metavar "PASSWORD"))
+    <|> (ApiKeyCredentials
+        <$> strOption
+            (  long "api-key"
+            <> help "Environment variable holding API key"
+            <> metavar "ENVVAR"))
+    <|> (MacOsKeyringCredentials
+        <$> strOption
+            (  long "mac-os-keyring-service"
+            <> help "Name of service to look up in MacOS keyring"
+            <> metavar "SERVICE")
+        <*> strOption
+            (  long "mac-os-keyring-account"
+            <> help "Name of account to look up in MacOS keyring"
+            <> metavar "ACCOUNT"))
+    <|> pure NoCredentials
+
 certificateVerificationConfigParser :: Parser CertificateVerificationConfig
 certificateVerificationConfigParser
    = (CustomCertificateVerificationConfig <$> strOption
@@ -80,112 +189,3 @@ oneShotCommandConfigParser
     <|> (flag' HeapDumpList
             (  long "heap-dumps"
             <> help "List available heap dumps"))
-
-credentialsConfigParser :: Parser CredentialsConfig
-credentialsConfigParser
-    = (BasicCredentials
-        <$> strOption
-            (  long "username"
-            <> help "Elasticsearch username, for security-enabled clusters"
-            <> metavar "USERNAME")
-        <*> strOption
-            (  long "password"
-            <> help "Elasticsearch password, for security-enabled clusters"
-            <> metavar "PASSWORD"))
-    <|> (ApiKeyCredentials
-        <$> strOption
-            (  long "api-key"
-            <> help "Environment variable holding API key"
-            <> metavar "ENVVAR"))
-    <|> (MacOsKeyringCredentials
-        <$> strOption
-            (  long "mac-os-keyring-service"
-            <> help "Name of service to look up in MacOS keyring"
-            <> metavar "SERVICE")
-        <*> strOption
-            (  long "mac-os-keyring-account"
-            <> help "Name of account to look up in MacOS keyring"
-            <> metavar "ACCOUNT"))
-    <|> pure NoCredentials
-
-uriEndpointConfigParser :: Parser ConnectionConfig
-uriEndpointConfigParser = ConnectionConfig
-    <$> (URIEndpoint <$> option (maybeReader parseAbsoluteURI)
-        (  long "server"
-        <> help "Base HTTP URI of the Elasticsearch server"
-        <> metavar "ADDR")
-        <|> pure DefaultEndpoint)
-    <*> credentialsConfigParser
-    <*> certificateVerificationConfigParser
-
-cloudDeploymentEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
-cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
-    <$> strOption
-        (  long "deployment"
-        <> help "Cloud deployment ID"
-        <> metavar "DEPLOYMENT-ID")
-    <*> optional (strOption
-        (  long "deployment-ref"
-        <> help "Cloud deployment reference"
-        <> metavar "REF-ID"))
-    <*> strOption
-        (  long "cloud-api-root"
-        <> help "URL of root Cloud API endpoint"
-        <> metavar "URL"
-        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
-        <> showDefault)
-    <*> strOption
-        (  long "api-key"
-        <> help "Environment variable holding API key"
-        <> metavar "ENVVAR"
-        <> value "API_KEY"
-        <> showDefault)
-    where
-        buildConnectionConfig deploymentId deploymentRefId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
-            Just apiRoot -> ConnectionConfig
-                { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
-                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
-                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
-                }
-            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
-
-serverlessProjectEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
-serverlessProjectEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
-    <$> strOption
-        (  long "project"
-        <> help "Cloud serverless project ID"
-        <> metavar "PROJECT-ID")
-    <*> strOption
-        (  long "cloud-api-root"
-        <> help "URL of root Cloud API endpoint"
-        <> metavar "URL"
-        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
-        <> showDefault)
-    <*> strOption
-        (  long "api-key"
-        <> help "Environment variable holding API key"
-        <> metavar "ENVVAR"
-        <> value "API_KEY"
-        <> showDefault)
-    where
-        buildConnectionConfig projectId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
-            Just apiRoot -> ConnectionConfig
-                { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
-                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
-                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
-                }
-            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
-
-configParser :: ConfigParserContext -> Parser Config
-configParser configParserContext = Config
-    <$> (   cloudDeploymentEndpointConfigParser   configParserContext
-        <|> serverlessProjectEndpointConfigParser configParserContext
-        <|> uriEndpointConfigParser
-        )
-    <*> generalConfigParser configParserContext
-
-configParserInfo :: ConfigParserContext -> ParserInfo Config
-configParserInfo configParserContext = info (configParser configParserContext <**> helper)
-    (fullDesc
-        <> progDesc "Interact with Elasticsearch from the shell"
-        <> header "escli - Interact with Elasticsearch from the shell")

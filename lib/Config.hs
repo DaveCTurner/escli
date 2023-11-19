@@ -14,6 +14,37 @@ module Config
 
 import Network.URI
 
+data Config = Config
+    { esConnectionConfig              :: ConnectionConfig
+    , esGeneralConfig                 :: GeneralConfig
+    } deriving (Show, Eq)
+
+data ConnectionConfig = ConnectionConfig
+    { esEndpointConfig                :: EndpointConfig
+    , esCredentialsConfig             :: CredentialsConfig
+    , esCertificateVerificationConfig :: CertificateVerificationConfig
+    } deriving (Show, Eq)
+
+data EndpointConfig
+    = DefaultEndpoint
+    | URIEndpoint               URI
+    | CloudDeploymentEndpoint   URI String (Maybe String)
+    | ServerlessProjectEndpoint URI String
+    deriving (Show, Eq)
+
+data CredentialsConfig
+    = NoCredentials
+    | BasicCredentials        String String
+    | ApiKeyCredentials       String
+    | MacOsKeyringCredentials String String
+    deriving (Show, Eq)
+
+data CertificateVerificationConfig
+    = DefaultCertificateVerificationConfig
+    | NoCertificateVerificationConfig
+    | CustomCertificateVerificationConfig FilePath
+    deriving (Show, Eq)
+
 data GeneralConfig = GeneralConfig
     { esHideTiming              :: Bool
     , esHideHeadings            :: Bool
@@ -28,40 +59,12 @@ data GeneralConfig = GeneralConfig
     , esOneShotCommand          :: Maybe OneShotCommandConfig
     } deriving (Show, Eq)
 
-data CertificateVerificationConfig
-    = DefaultCertificateVerificationConfig
-    | NoCertificateVerificationConfig
-    | CustomCertificateVerificationConfig FilePath
-    deriving (Show, Eq)
-
-data NodeType = NodeTypeInstance | NodeTypeTiebreaker deriving (Show, Eq)
-
 data OneShotCommandConfig
     = ThreadDumpNode NodeType Int
     | HeapDumpList
     deriving (Show, Eq)
 
-data CredentialsConfig
-    = NoCredentials
-    | BasicCredentials  String String
-    | ApiKeyCredentials String
-    | MacOsKeyringCredentials String String
+data NodeType
+    = NodeTypeInstance
+    | NodeTypeTiebreaker
     deriving (Show, Eq)
-
-data EndpointConfig
-    = DefaultEndpoint
-    | URIEndpoint               URI
-    | CloudDeploymentEndpoint   URI String (Maybe String)
-    | ServerlessProjectEndpoint URI String
-    deriving (Show, Eq)
-
-data ConnectionConfig = ConnectionConfig
-    { esEndpointConfig                :: EndpointConfig
-    , esCredentialsConfig             :: CredentialsConfig
-    , esCertificateVerificationConfig :: CertificateVerificationConfig
-    } deriving (Show, Eq)
-
-data Config = Config
-    { esConnectionConfig              :: ConnectionConfig
-    , esGeneralConfig                 :: GeneralConfig
-    } deriving (Show, Eq)
