@@ -159,36 +159,39 @@ buildManager ConnectionConfig{..} = do
 
     newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
 
+buildApplyCredentials :: CredentialsConfig -> IO (Request -> Request)
+buildApplyCredentials = \case
+    NoCredentials                           -> return id
+    BasicCredentials  userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
+    ApiKeyCredentials apiKeyEnvVar          -> do
+        maybeApiKey <- lookupEnv apiKeyEnvVar
+        case maybeApiKey of
+            Nothing -> error $ "Environment variable '" ++ apiKeyEnvVar ++ "' not set (maybe run set-cloud-env?)"
+            Just apiKey ->
+                return $ \req -> req
+                    { requestHeaders
+                        = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
+                        : ("X-Management-Request", "true")
+                        : requestHeaders req
+                    }
+    MacOsKeyringCredentials service account -> do
+        apiKey <- SP.readProcess "security" ["find-generic-password", "-s", service, "-a", account, "-w"] ""
+        return $ \req -> req
+            { requestHeaders
+                = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)
+                : ("X-Management-Request", "true")
+                : requestHeaders req
+            }
+    where credFromString = T.encodeUtf8 . T.pack
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
     } -> do
 
-    manager <- buildManager $ esConnectionConfig config
-
-    applyCredentials <- let credFromString = T.encodeUtf8 . T.pack in case esCredentialsConfig of
-        NoCredentials                          -> return id
-        BasicCredentials userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
-        ApiKeyCredentials apiKeyEnvVar         -> do
-            maybeApiKey <- lookupEnv apiKeyEnvVar
-            case maybeApiKey of
-                Nothing -> error $ "Environment variable '" ++ apiKeyEnvVar ++ "' not set (maybe run set-cloud-env)"
-                Just apiKey ->
-                    return $ \req -> req
-                        { requestHeaders
-                            = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
-                            : ("X-Management-Request", "true")
-                            : requestHeaders req
-                        }
-        MacOsKeyringCredentials service account -> do
-            apiKey <- SP.readProcess "security" ["find-generic-password", "-s", service, "-a", account, "-w"] ""
-            return $ \req -> req
-                { requestHeaders
-                    = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)
-                    : ("X-Management-Request", "true")
-                    : requestHeaders req
-                }
+    manager          <- buildManager $ esConnectionConfig config
+    applyCredentials <- buildApplyCredentials esCredentialsConfig
 
     baseURI <- case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
