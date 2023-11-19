@@ -3,6 +3,7 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 
 module Main where
@@ -127,45 +128,44 @@ instance FromJSON HeapDumpsResponse where
 parseHeapDumpsResponse :: BL.ByteString -> HeapDumpsResponse
 parseHeapDumpsResponse = either error id . eitherDecode
 
+hostNameFromURI :: URI -> String
+hostNameFromURI uri = fromMaybe (error $ "could not extract hostname from URI " ++ show uri) $ uriRegName <$> uriAuthority uri
+
+hostName :: EndpointConfig -> String
+hostName = hostNameFromURI . \case
+    DefaultEndpoint                       -> defaultBaseUri
+    URIEndpoint               baseURI     -> baseURI
+    CloudDeploymentEndpoint   apiRoot _ _ -> apiRoot
+    ServerlessProjectEndpoint apiRoot _   -> apiRoot
+
+buildManager :: ConnectionConfig -> IO Manager
+buildManager ConnectionConfig{..} = do
+    let validateNone = \_ _ _ _ -> return []
+    (certStore, verifyCert) <- case esCertificateVerificationConfig of
+        DefaultCertificateVerificationConfig -> (,validateDefault)  <$> getSystemCertificateStore
+        NoCertificateVerificationConfig      -> (,validateNone)     <$> getSystemCertificateStore
+        CustomCertificateVerificationConfig certStorePath -> do
+            maybeCertStore <- readCertificateStore certStorePath
+            case maybeCertStore of
+                Just certStore -> return (certStore, validateDefault)
+                Nothing -> error $ "failed to read certificate store from " ++ certStorePath
+
+    let clientParams = (defaultParamsClient (hostName esEndpointConfig) B.empty)
+            { clientSupported = def { supportedCiphers    = ciphersuite_default }
+            , clientShared    = def { sharedCAStore       = certStore }
+            , clientHooks     = def { onServerCertificate = verifyCert }
+            }
+        httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
+
+    newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
     } -> do
 
-    (certStore, verifyCert) <- case esCertificateVerificationConfig of
-        DefaultCertificateVerificationConfig -> (,True)  <$> getSystemCertificateStore
-        NoCertificateVerificationConfig      -> (,False) <$> getSystemCertificateStore
-        CustomCertificateVerificationConfig certStorePath -> do
-            maybeCertStore <- readCertificateStore certStorePath
-            case maybeCertStore of
-                Just certStore -> return (certStore, True)
-                Nothing -> error $ "failed to read certificate store from " ++ certStorePath
-
-    let hostName = case esEndpointConfig of
-            DefaultEndpoint               -> "localhost"
-            URIEndpoint baseURI           -> fromMaybe "" $ fmap uriRegName $ uriAuthority baseURI
-            CloudDeploymentEndpoint apiRoot _ _ -> case uriAuthority apiRoot of
-                Just URIAuth{..} -> uriRegName
-                Nothing -> error $ "could not extract hostname from URI '" ++ show apiRoot ++ "'"
-            ServerlessProjectEndpoint apiRoot _ -> case uriAuthority apiRoot of
-                Just URIAuth{..} -> uriRegName
-                Nothing -> error $ "could not extract hostname from URI '" ++ show apiRoot ++ "'"
-
-        clientParams = (defaultParamsClient hostName B.empty)
-            { clientSupported = def
-                { supportedCiphers = ciphersuite_default
-                }
-            , clientShared = def
-                { sharedCAStore = certStore
-                }
-            , clientHooks = def
-                { onServerCertificate = if verifyCert then validateDefault else \_ _ _ _ -> return []
-                }
-            }
-        httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
-
-    manager <- newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
+    manager <- buildManager $ esConnectionConfig config
 
     applyCredentials <- let credFromString = T.encodeUtf8 . T.pack in case esCredentialsConfig of
         NoCredentials                          -> return id
