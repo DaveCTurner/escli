@@ -184,14 +184,27 @@ buildApplyCredentials = \case
             }
     where credFromString = T.encodeUtf8 . T.pack
 
+newtype HttpClient = HttpClient { runHttpClient :: forall a. (Request -> (Response BodyReader -> IO a) -> IO a) }
+
+buildHttpClient :: ConnectionConfig -> IO HttpClient
+buildHttpClient esConnectionConfig@ConnectionConfig{..} = do
+    manager          <- buildManager          esConnectionConfig
+    applyCredentials <- buildApplyCredentials esCredentialsConfig
+    return HttpClient { runHttpClient = \request -> withResponse (applyCredentials request) manager }
+
+runRequestWith :: HttpClient -> Request -> IO (Response BL.ByteString)
+runRequestWith httpClient request = runHttpClient httpClient request $ \response -> do
+    bss <- brConsume $ responseBody response
+    return response { responseBody = BL.fromChunks bss }
+
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
     } -> do
 
-    manager          <- buildManager $ esConnectionConfig config
-    applyCredentials <- buildApplyCredentials esCredentialsConfig
+    httpClient <- buildHttpClient $ esConnectionConfig config
+    let runRequest = runRequestWith httpClient
 
     baseURI <- case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
@@ -202,8 +215,7 @@ main = withConfig $ \config@Config
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
                 lookupDeploymentRef = do
-                    let initReq = parseURIRequest "deployment metadata" $ apiRoot ~// "api/v1/deployments" ~. deploymentId
-                    getDeploymentResponse <- httpLbs (applyCredentials initReq) manager
+                    getDeploymentResponse <- runRequest $ parseURIRequest "deployment metadata" $ apiRoot ~// "api/v1/deployments" ~. deploymentId
                     when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
                     case eitherDecode' (responseBody getDeploymentResponse) of
                         Left msg -> error msg
@@ -229,8 +241,7 @@ main = withConfig $ \config@Config
         ServerlessProjectEndpoint apiRoot projectId -> do
             let getProjectType [] = error $ "could not determine type of project " ++ projectId ++ " at " ++ show apiRoot
                 getProjectType (pt:pts) = do
-                    let initReq = parseURIRequest "project metadata" $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ pt ~. projectId
-                    getDeploymentResponse <- httpLbs (applyCredentials initReq {method="GET"}) manager
+                    getDeploymentResponse <- runRequest $ parseURIRequest "project metadata" $ apiRoot ~// "api/v1/admin/serverless/projects" ~/ pt ~. projectId
                     if
                         | responseStatus getDeploymentResponse == ok200       -> return pt
                         | responseStatus getDeploymentResponse == notFound404 -> getProjectType pts
@@ -250,14 +261,13 @@ main = withConfig $ \config@Config
             let captureURI = let s = "../../../heap_dumps"
                                  r = fromMaybe (error s) $ parseRelativeReference s
                              in show $ r `relativeTo` baseURI
-                initReq = fromMaybe (error captureURI) $ parseRequest captureURI
-                req = applyCredentials initReq
+                req = fromMaybe (error captureURI) $ parseRequest captureURI
             putStrLn $ "# curl --silent -XGET"
                 ++ curlCertificateVerificationOption esCertificateVerificationConfig
                 ++ curlCredentialsOption             False esCredentialsConfig
                 ++ " "
                 ++ show captureURI
-            HeapDumpsResponse refHeapDumps <- parseHeapDumpsResponse . responseBody <$> httpLbs req manager
+            HeapDumpsResponse refHeapDumps <- parseHeapDumpsResponse . responseBody <$> runRequest req
             forM_ refHeapDumps $ \(RefHeapDumps refId heapDumps) -> forM_ heapDumps $ \HeapDumpDetails{..} ->
                 let s = printf "../../%s/instances/%s/heap_dump/_download" refId heapDumpInstanceId
                     r = fromMaybe (error s) $ parseRelativeReference s
@@ -273,15 +283,13 @@ main = withConfig $ \config@Config
                                  r = fromMaybe (error s) $ parseRelativeReference s
                              in show $ relativeTo r baseURI
                 initReq = fromMaybe (error captureURI) $ parseRequest captureURI
-                req = applyCredentials initReq
-                    { method = T.encodeUtf8 "POST"
-                    }
+                req = initReq { method = T.encodeUtf8 "POST" }
             putStrLn $ "# curl --silent --compressed -XPOST"
                 ++ curlCertificateVerificationOption esCertificateVerificationConfig
                 ++ curlCredentialsOption             False esCredentialsConfig
                 ++ " "
                 ++ show captureURI
-            withResponse req manager $ \response -> let
+            runHttpClient httpClient req $ \response -> let
                 body = responseBody response
                 go = do
                     chunk <- body
@@ -300,7 +308,7 @@ main = withConfig $ \config@Config
                      $  sourceHandle stdin
                      .| conduitParser esCommand
                      .| DCL.map snd
-                     .| awaitForever (runCommand baseURI config applyCredentials manager)
+                     .| awaitForever (runCommand baseURI config runRequest)
                      .| awaitForever (\(consoleEntry, logEntry) -> liftIO $ do
                             putStrLn consoleEntry
                             writeLog $ T.encodeUtf8 $ T.pack $ logEntry ++ "\n")
@@ -357,15 +365,14 @@ curlCredentialsOption _                  (ApiKeyCredentials apiKeyEnvVar)       
 curlCredentialsOption _                  (MacOsKeyringCredentials service account) = " --header \"Authorization: ApiKey $(security find-generic-password -s "
                                                                                    ++ show service ++ " -a " ++ show account ++ " -w)\" --header \"X-Management-Request: true\""
 
-runCommand :: URI -> Config -> (Request -> Request) -> Manager -> ESCommand -> ConduitT ESCommand (String, String) IO ()
+runCommand :: URI -> Config -> (Request -> IO (Response BL.ByteString)) -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand
     baseURI
     Config
         { esGeneralConfig    = GeneralConfig{..}
         , esConnectionConfig = ConnectionConfig{..}
         }
-    applyCredentials
-    manager
+    runRequest
     ESCommand{..}
 
     = do
@@ -380,7 +387,7 @@ runCommand
                 [_] -> [(hContentType, "application/json")]
                 _   -> [(hContentType, "application/x-ndjson")]
 
-        req = applyCredentials initReq
+        req = initReq
             { method = httpVerb
             , requestHeaders = maybeContentTypeHeader
             , requestBody = RequestBodyBuilder bodyLength bodyBuilder
@@ -420,7 +427,7 @@ runCommand
                 tell $ concatMap escapeShellQuoted $ concatMap (T.unpack . T.decodeUtf8) $ BL.toChunks $ B.toLazyByteString bodyBuilder
                 tell "'"
 
-    response <- liftIO $ httpLbs req manager
+    response <- liftIO $ runRequest req
     after <- liftIO getCurrentTime
 
     if esOnlyResponse
