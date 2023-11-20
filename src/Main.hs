@@ -16,28 +16,19 @@ import Data.Aeson
 import Data.Conduit
 import Data.Conduit.Attoparsec
 import Data.Conduit.Binary hiding (drop)
-import Data.Default.Class
 import Data.Int
 import Data.List
 import Data.Maybe
-import Data.String.Utils (strip)
 import Data.Time
 import Data.Time.ISO8601
-import Data.X509.CertificateStore
-import Data.X509.Validation
 import ESCommand
-import Network.Connection
+import HttpClient
 import Network.HTTP.Client
-import Network.HTTP.Client.TLS
 import Network.HTTP.Media
 import Network.HTTP.Types.Header
 import Network.HTTP.Types.Status
-import Network.TLS
-import Network.TLS.Extra.Cipher
 import Network.URI
 import System.IO
-import System.X509
-import System.Environment (lookupEnv)
 import Text.Printf (printf)
 import qualified Data.Aeson.Encode.Pretty
 import qualified Data.ByteString as B
@@ -46,7 +37,6 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Conduit.List as DCL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified System.Process as SP
 
 withMaybeLogFile :: Maybe FilePath -> ((B.ByteString -> IO ()) -> IO a) -> IO a
 withMaybeLogFile Nothing go = go (const $ return ())
@@ -128,82 +118,13 @@ instance FromJSON HeapDumpsResponse where
 parseHeapDumpsResponse :: BL.ByteString -> HeapDumpsResponse
 parseHeapDumpsResponse = either error id . eitherDecode
 
-hostNameFromURI :: URI -> String
-hostNameFromURI uri = fromMaybe (error $ "could not extract hostname from URI " ++ show uri) $ uriRegName <$> uriAuthority uri
-
-hostName :: EndpointConfig -> String
-hostName = hostNameFromURI . \case
-    DefaultEndpoint                       -> defaultBaseUri
-    URIEndpoint               baseURI     -> baseURI
-    CloudDeploymentEndpoint   apiRoot _ _ -> apiRoot
-    ServerlessProjectEndpoint apiRoot _   -> apiRoot
-
-buildManager :: ConnectionConfig -> IO Manager
-buildManager ConnectionConfig{..} = do
-    let validateNone = \_ _ _ _ -> return []
-    (certStore, verifyCert) <- case esCertificateVerificationConfig of
-        DefaultCertificateVerificationConfig -> (,validateDefault)  <$> getSystemCertificateStore
-        NoCertificateVerificationConfig      -> (,validateNone)     <$> getSystemCertificateStore
-        CustomCertificateVerificationConfig certStorePath -> do
-            maybeCertStore <- readCertificateStore certStorePath
-            case maybeCertStore of
-                Just certStore -> return (certStore, validateDefault)
-                Nothing -> error $ "failed to read certificate store from " ++ certStorePath
-
-    let clientParams = (defaultParamsClient (hostName esEndpointConfig) B.empty)
-            { clientSupported = def { supportedCiphers    = ciphersuite_default }
-            , clientShared    = def { sharedCAStore       = certStore }
-            , clientHooks     = def { onServerCertificate = verifyCert }
-            }
-        httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
-
-    newManager httpClientSettings { managerResponseTimeout = responseTimeoutNone }
-
-buildApplyCredentials :: CredentialsConfig -> IO (Request -> Request)
-buildApplyCredentials = \case
-    NoCredentials                           -> return id
-    BasicCredentials  userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
-    ApiKeyCredentials apiKeyEnvVar          -> do
-        maybeApiKey <- lookupEnv apiKeyEnvVar
-        case maybeApiKey of
-            Nothing -> error $ "Environment variable '" ++ apiKeyEnvVar ++ "' not set (maybe run set-cloud-env?)"
-            Just apiKey ->
-                return $ \req -> req
-                    { requestHeaders
-                        = (hAuthorization,         credFromString $ "ApiKey " ++ apiKey)
-                        : ("X-Management-Request", "true")
-                        : requestHeaders req
-                    }
-    MacOsKeyringCredentials service account -> do
-        apiKey <- SP.readProcess "security" ["find-generic-password", "-s", service, "-a", account, "-w"] ""
-        return $ \req -> req
-            { requestHeaders
-                = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)
-                : ("X-Management-Request", "true")
-                : requestHeaders req
-            }
-    where credFromString = T.encodeUtf8 . T.pack
-
-newtype HttpClient = HttpClient { runHttpClient :: forall a. (Request -> (Response BodyReader -> IO a) -> IO a) }
-
-buildHttpClient :: ConnectionConfig -> IO HttpClient
-buildHttpClient esConnectionConfig@ConnectionConfig{..} = do
-    manager          <- buildManager          esConnectionConfig
-    applyCredentials <- buildApplyCredentials esCredentialsConfig
-    return HttpClient { runHttpClient = \request -> withResponse (applyCredentials request) manager }
-
-runRequestWith :: HttpClient -> Request -> IO (Response BL.ByteString)
-runRequestWith httpClient request = runHttpClient httpClient request $ \response -> do
-    bss <- brConsume $ responseBody response
-    return response { responseBody = BL.fromChunks bss }
-
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
     , esConnectionConfig = ConnectionConfig{..}
     } -> do
 
-    httpClient <- buildHttpClient $ esConnectionConfig config
+    httpClient <- buildHttpClient defaultBaseUri $ esConnectionConfig config
     let runRequest = runRequestWith httpClient
 
     baseURI <- case esEndpointConfig of
