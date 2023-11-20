@@ -8,6 +8,7 @@
 
 module Main where
 
+import Cloud.Responses
 import Config
 import Config.File
 import Control.Monad
@@ -57,67 +58,6 @@ defaultBaseUri = URI
     , uriFragment = ""
     }
 
-data DeploymentDetails = DeploymentDetails DeploymentResourceDetails deriving (Show, Eq)
-
-instance FromJSON DeploymentDetails where
-    parseJSON = withObject "DeploymentDetails" $ \v -> DeploymentDetails <$> v .: "resources"
-
-data DeploymentResourceDetails = DeploymentResourceDetails [DeploymentClusterDetails] deriving (Show, Eq)
-
-instance FromJSON DeploymentResourceDetails where
-    parseJSON = withObject "DeploymentResourceDetails" $ \v -> DeploymentResourceDetails <$> v .: "elasticsearch"
-
-data DeploymentClusterDetails = DeploymentClusterDetails
-    { deploymentClusterRefId  :: String
-    , deploymentClusterId     :: String
-    , deploymentClusterRegion :: String
-    , deploymentClusterInfo   :: DeploymentClusterInfo
-    } deriving (Show, Eq)
-
-instance FromJSON DeploymentClusterDetails where
-    parseJSON = withObject "DeploymentClusterDetails" $ \v -> DeploymentClusterDetails
-        <$> v .: "ref_id"
-        <*> v .: "id"
-        <*> v .: "region"
-        <*> v .: "info"
-
-data DeploymentClusterInfo = DeploymentClusterInfo { deploymentClusterInfoName :: String } deriving (Show, Eq)
-
-instance FromJSON DeploymentClusterInfo where
-    parseJSON = withObject "DeploymentClusterInfo" $ \v -> DeploymentClusterInfo <$> v .: "cluster_name"
-
-data HeapDumpDetails = HeapDumpDetails
-    { heapDumpInstanceId  :: String
-    , heapDumpSize        :: Integer
-    , heapDumpType        :: String
-    , heapDumpStatus      :: String
-    , heapDumpCaptureTime :: String
-    } deriving (Show, Eq)
-
-instance FromJSON HeapDumpDetails where
-    parseJSON = withObject "HeapDumpDetails" $ \v -> HeapDumpDetails
-        <$> v .:  "instance_id"
-        <*> v .:? "size" .!= 0
-        <*> v .:  "type"
-        <*> v .:  "status"
-        <*> v .:  "captured"
-
-data RefHeapDumps = RefHeapDumps String [HeapDumpDetails] deriving (Show, Eq)
-
-instance FromJSON RefHeapDumps where
-    parseJSON = withObject "RefHeapDumps" $ \v -> RefHeapDumps
-        <$> v .: "ref_id"
-        <*> v .: "heap_dumps"
-
-data HeapDumpsResponse = HeapDumpsResponse [RefHeapDumps] deriving (Show, Eq)
-
-instance FromJSON HeapDumpsResponse where
-    parseJSON = withObject "HeapDumpsResponse" $ \v -> HeapDumpsResponse
-        <$> v .: "elasticsearch"
-
-parseHeapDumpsResponse :: BL.ByteString -> HeapDumpsResponse
-parseHeapDumpsResponse = either error id . eitherDecode
-
 main :: IO ()
 main = withConfig $ \config@Config
     { esGeneralConfig    = GeneralConfig{..}
@@ -126,6 +66,10 @@ main = withConfig $ \config@Config
 
     httpClient <- buildHttpClient defaultBaseUri $ esConnectionConfig config
     let runRequest = runRequestWith httpClient
+        runJsonRequest request = do
+            response <- runRequest request
+            when (responseStatus response /= ok200) $ error $ "runJsonRequest: " ++ show response
+            return $ parseJsonResponseBody $ responseBody response
 
     baseURI <- case esEndpointConfig of
         DefaultEndpoint                                    -> return defaultBaseUri
@@ -136,26 +80,23 @@ main = withConfig $ \config@Config
                                 then drop (length deploymentURIPrefix) deploymentIdString
                                 else deploymentIdString
                 lookupDeploymentRef = do
-                    getDeploymentResponse <- runRequest $ parseURIRequest "deployment metadata" $ apiRoot ~// "api/v1/deployments" ~. deploymentId
-                    when (responseStatus getDeploymentResponse /= ok200) $ error $ "failed to get deployment details: " ++ show getDeploymentResponse
-                    case eitherDecode' (responseBody getDeploymentResponse) of
-                        Left msg -> error msg
-                        Right (DeploymentDetails (DeploymentResourceDetails clusters)) -> case clusters of
-                            [] -> error $ "no clusters found for deployment " ++ deploymentId
-                            [DeploymentClusterDetails{..}] -> return deploymentClusterRefId
-                            _ -> do
-                                putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
-                                forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
-                                    $ "--deployment "
-                                    ++ deploymentId
-                                    ++ "--deployment-ref "
-                                    ++ deploymentClusterRefId
-                                    ++ " # cluster id "
-                                    ++ deploymentClusterId
-                                    ++ ", name "
-                                    ++ show (deploymentClusterInfoName deploymentClusterInfo)
-                                putStrLn ""
-                                error "deployment has multiple clusters"
+                    DeploymentDetails (DeploymentResourceDetails clusters) <- runJsonRequest $ parseURIRequest "deployment metadata" $ apiRoot ~// "api/v1/deployments" ~. deploymentId
+                    case clusters of
+                        [] -> error $ "no clusters found for deployment " ++ deploymentId
+                        [DeploymentClusterDetails{..}] -> return deploymentClusterRefId
+                        _ -> do
+                            putStrLn $ "deployment " ++ deploymentId ++ " has " ++ show (length clusters) ++ " clusters, choose from the following:"
+                            forM_ clusters $ \DeploymentClusterDetails{..} -> putStrLn
+                                $ "--deployment "
+                                ++ deploymentId
+                                ++ "--deployment-ref "
+                                ++ deploymentClusterRefId
+                                ++ " # cluster id "
+                                ++ deploymentClusterId
+                                ++ ", name "
+                                ++ show (deploymentClusterInfoName deploymentClusterInfo)
+                            putStrLn ""
+                            error "deployment has multiple clusters"
             deploymentRef <- maybe lookupDeploymentRef return maybeDeploymentRef
             return $ unwrapURI $ apiRoot ~// "api/v1/deployments" ~/ deploymentId ~/ "elasticsearch" ~/ deploymentRef ~/ "proxy"
 
@@ -188,7 +129,7 @@ main = withConfig $ \config@Config
                 ++ curlCredentialsOption             False esCredentialsConfig
                 ++ " "
                 ++ show captureURI
-            HeapDumpsResponse refHeapDumps <- parseHeapDumpsResponse . responseBody <$> runRequest req
+            HeapDumpsResponse refHeapDumps <- runJsonRequest req
             forM_ refHeapDumps $ \(RefHeapDumps refId heapDumps) -> forM_ heapDumps $ \HeapDumpDetails{..} ->
                 let s = printf "../../%s/instances/%s/heap_dump/_download" refId heapDumpInstanceId
                     r = fromMaybe (error s) $ parseRelativeReference s

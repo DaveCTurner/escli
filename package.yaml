@@ -38,6 +38,7 @@ dependencies:
 library:
   source-dirs: lib
   exposed-modules:
+  - Cloud.Responses
   - Config
   - Config.Parser
   - Config.File
