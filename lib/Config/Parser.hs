@@ -41,9 +41,9 @@ cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionCon
         <> metavar "REF-ID"))
     <*> strOption
         (  long "cloud-api-root"
-        <> help "URL of root Cloud API endpoint"
+        <> help "URL of root Cloud API endpoint (${ENV_URL} by default)"
         <> metavar "URL"
-        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
+        <> value configParserContextApiRoot
         <> showDefault)
     <*> strOption
         (  long "api-key"
