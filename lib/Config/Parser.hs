@@ -29,8 +29,28 @@ configParser configParserContext = Config
         )
     <*> generalConfigParser configParserContext
 
+cloudApiRootParser :: ConfigParserContext -> Parser URI
+cloudApiRootParser ConfigParserContext{..} = uriFromString <$> strOption
+    (  long "cloud-api-root"
+    <> help "URL of root Cloud API endpoint (${ENV_URL} by default)"
+    <> metavar "URL"
+    <> value configParserContextApiRoot
+    <> showDefault)
+    where
+    uriFromString s = case parseAbsoluteURI s of
+        Nothing -> error $ "could not parse API root URL " ++ show s
+        Just u  -> u
+
+apiKeyEnvVarParser :: Parser String
+apiKeyEnvVarParser = strOption
+    (  long "api-key"
+    <> help "Environment variable holding API key"
+    <> metavar "ENVVAR"
+    <> value "API_KEY"
+    <> showDefault)
+
 cloudDeploymentEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
-cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
+cloudDeploymentEndpointConfigParser configParserContext = buildConnectionConfig
     <$> strOption
         (  long "deployment"
         <> help "Cloud deployment ID"
@@ -39,53 +59,29 @@ cloudDeploymentEndpointConfigParser ConfigParserContext{..} = buildConnectionCon
         (  long "deployment-ref"
         <> help "Cloud deployment reference"
         <> metavar "REF-ID"))
-    <*> strOption
-        (  long "cloud-api-root"
-        <> help "URL of root Cloud API endpoint (${ENV_URL} by default)"
-        <> metavar "URL"
-        <> value configParserContextApiRoot
-        <> showDefault)
-    <*> strOption
-        (  long "api-key"
-        <> help "Environment variable holding API key"
-        <> metavar "ENVVAR"
-        <> value "API_KEY"
-        <> showDefault)
+    <*> cloudApiRootParser configParserContext
+    <*> apiKeyEnvVarParser
     where
-        buildConnectionConfig deploymentId deploymentRefId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
-            Just apiRoot -> ConnectionConfig
-                { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
-                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
-                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
-                }
-            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
+        buildConnectionConfig deploymentId deploymentRefId apiRoot apiKeyVar = ConnectionConfig
+            { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
+            , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+            , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
+            }
 
 serverlessProjectEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
-serverlessProjectEndpointConfigParser ConfigParserContext{..} = buildConnectionConfig
+serverlessProjectEndpointConfigParser configParserContext = buildConnectionConfig
     <$> strOption
         (  long "project"
         <> help "Cloud serverless project ID"
         <> metavar "PROJECT-ID")
-    <*> strOption
-        (  long "cloud-api-root"
-        <> help "URL of root Cloud API endpoint"
-        <> metavar "URL"
-        <> value ("${ENV_URL}=" ++ configParserContextApiRoot)
-        <> showDefault)
-    <*> strOption
-        (  long "api-key"
-        <> help "Environment variable holding API key"
-        <> metavar "ENVVAR"
-        <> value "API_KEY"
-        <> showDefault)
+    <*> cloudApiRootParser configParserContext
+    <*> apiKeyEnvVarParser
     where
-        buildConnectionConfig projectId apiRootString apiKeyVar = case parseAbsoluteURI apiRootString of
-            Just apiRoot -> ConnectionConfig
-                { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
-                , esCredentialsConfig = ApiKeyCredentials apiKeyVar
-                , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
-                }
-            Nothing -> error $ "could not parse API root URL '" ++ apiRootString ++ "'"
+        buildConnectionConfig projectId apiRoot apiKeyVar = ConnectionConfig
+            { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
+            , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+            , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
+            }
 
 uriEndpointConfigParser :: Parser ConnectionConfig
 uriEndpointConfigParser = ConnectionConfig
