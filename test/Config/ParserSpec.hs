@@ -1,4 +1,4 @@
-module ConfigSpec where
+module Config.ParserSpec where
 
 import Config
 import Config.Parser
@@ -9,7 +9,7 @@ import Options.Applicative.Help.Chunk
 import Test.Hspec
 
 spec :: Spec
-spec = describe "ConfigSpec" $ do
+spec = do
     it "accepts no args" $
         "" `optsShouldYield` defaultConfig
 
