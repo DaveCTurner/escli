@@ -80,6 +80,23 @@ spec = do
                 , esCredentialsConfig = ApiKeyCredentials "API_KEY"
                 })
 
+        describe "Cloud project endpoints" $ do
+
+            connectionConfig "--project abcdef" (\s -> s
+                { esEndpointConfig    = ServerlessProjectEndpoint testApiRoot "abcdef"
+                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                })
+
+            connectionConfig "--project abcdef --api-key OTHER_API_KEY" (\s -> s
+                { esEndpointConfig    = ServerlessProjectEndpoint testApiRoot "abcdef"
+                , esCredentialsConfig = ApiKeyCredentials "OTHER_API_KEY"
+                })
+
+            connectionConfig "--project abcdef --cloud-api-root http://api.example.org/other/test/root" (\s -> s
+                { esEndpointConfig    = ServerlessProjectEndpoint (_u "http://api.example.org/other/test/root") "abcdef"
+                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                })
+
     describe "validation" $ do
 
         invalid "--definitely-not-a-valid-option" "Invalid option `--definitely-not-a-valid-option'"
@@ -98,6 +115,11 @@ spec = do
         invalid "--deployment abcdef --mac-os-keyring-account ACCT"                "Invalid option `--mac-os-keyring-account'"
         invalid "--deployment abcdef --certificate-store cafile.pem"               "Invalid option `--certificate-store'"
         invalid "--deployment abcdef --insecurely-bypass-certificate-verification" "Invalid option `--insecurely-bypass-certificate-verification'"
+
+        invalid "--project abcdef --username foo"                                  "Invalid option `--username'"
+        invalid "--project abcdef --mac-os-keyring-account ACCT"                   "Invalid option `--mac-os-keyring-account'"
+        invalid "--project abcdef --certificate-store cafile.pem"                  "Invalid option `--certificate-store'"
+        invalid "--project abcdef --insecurely-bypass-certificate-verification"    "Invalid option `--insecurely-bypass-certificate-verification'"
 
 invalid :: String -> String -> SpecWith (Arg Expectation)
 invalid arg msg = it ("rejects " ++ show arg ++ " with " ++ show msg) $ arg `optsShouldFailWith` msg
