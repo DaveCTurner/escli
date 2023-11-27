@@ -12,6 +12,21 @@ spec = describe "ConfigSpec" $ do
     it "accepts no args" $
         "" `optsShouldYield` defaultConfig
 
+    generalConfigFlag "--hide-timing"                (\s -> s {esHideTiming              = True})
+    generalConfigFlag "--hide-headings"              (\s -> s {esHideHeadings            = True})
+    generalConfigFlag "--hide-status"                (\s -> s {esHideStatusCode          = True})
+    generalConfigFlag "--hide-curl-equivalent"       (\s -> s {esHideCurlEquivalent      = True})
+    generalConfigFlag "--show-curl-password"         (\s -> s {esShowCurlPassword        = True})
+    generalConfigFlag "--hide-deprecation-warnings"  (\s -> s {esHideDeprecationWarnings = True})
+    generalConfigFlag "--only-response"              (\s -> s {esOnlyResponse            = True})
+    generalConfigFlag "--save"                       (\s -> s {esSaveConnectionConfig    = True})
+    generalConfigFlag "--no-max-response-lines"      (\s -> s {esMaxResponseLines        = -1  })
+    generalConfigFlag "--max-response-lines 42"      (\s -> s {esMaxResponseLines        = 42  })
+    generalConfigFlag "--log-file escli.log"         (\s -> s {esLogFile                 = Just "escli.log"})
+    generalConfigFlag "--thread-dump 123"            (\s -> s {esOneShotCommand          = Just $ ThreadDumpNode NodeTypeInstance   123})
+    generalConfigFlag "--thread-dump-tiebreaker 456" (\s -> s {esOneShotCommand          = Just $ ThreadDumpNode NodeTypeTiebreaker 456})
+    generalConfigFlag "--heap-dumps"                 (\s -> s {esOneShotCommand          = Just HeapDumpList})
+
     it "rejects unknown options" $
         "--definitely-not-a-valid-option" `optsShouldFailWith` "Invalid option `--definitely-not-a-valid-option'"
 
@@ -23,6 +38,12 @@ spec = describe "ConfigSpec" $ do
 
     it "requires an argument to --password" $
         "--password" `optsShouldFailWith` "The option `--password` expects an argument."
+
+generalConfigFlag :: String -> (GeneralConfig -> GeneralConfig) -> SpecWith (Arg Expectation)
+generalConfigFlag arg f = it ("accepts " ++ arg) $ arg `optsShouldYield` generalConfigModified defaultConfig f
+
+generalConfigModified :: Config -> (GeneralConfig -> GeneralConfig) -> Config
+generalConfigModified c f = c {esGeneralConfig = f (esGeneralConfig c)}
 
 optsShouldYield :: String -> Config -> Expectation
 optsShouldYield args expectedConfig = case execParserPure defaultPrefs (configParserInfo testConfigParserContext) (words args) of
