@@ -239,7 +239,7 @@ runCommand
 
     = do
 
-    let absUri = maybe (error "Bad URI") (show . (`relativeTo` baseURI)) (parseURIReference httpPath)
+    let absUri = maybe (error $ "Bad relative URI: " ++ show httpPath) (show . (`relativeTo` baseURI)) (parseURIReference httpPath)
         initReq = fromMaybe (error "Bad URI") $ parseRequest absUri
 
         BuilderWithLength bodyBuilder bodyLength = builderFromBody cmdBody
