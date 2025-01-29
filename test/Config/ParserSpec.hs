@@ -53,9 +53,14 @@ spec = do
                 , esCredentialsConfig = ApiKeyCredentials "API_KEY_ENV_VAR"
                 })
 
+            connectionConfig "--server https://example.org:1234/ --mac-os-keyring-service SRVC" (\s -> s
+                { esEndpointConfig    = URIEndpoint $ _u "https://example.org:1234/"
+                , esCredentialsConfig = MacOsKeyringCredentials "SRVC" Nothing
+                })
+
             connectionConfig "--server https://example.org:1234/ --mac-os-keyring-service SRVC --mac-os-keyring-account ACCT" (\s -> s
                 { esEndpointConfig    = URIEndpoint $ _u "https://example.org:1234/"
-                , esCredentialsConfig = MacOsKeyringCredentials "SRVC" "ACCT"
+                , esCredentialsConfig = MacOsKeyringCredentials "SRVC" (Just "ACCT")
                 })
 
         describe "Cloud deployment endpoints" $ do
@@ -107,7 +112,6 @@ spec = do
         invalid "--server https://example.org:1234/ --username testuser"                                      "Missing: --password PASSWORD"
         invalid "--server https://example.org:1234/ --password testpass"                                      "Missing: --username USERNAME"
         invalid "--server https://example.org:1234/ --mac-os-keyring-account ACCT"                            "Missing: --mac-os-keyring-service SERVICE"
-        invalid "--server https://example.org:1234/ --mac-os-keyring-service SRVC"                            "Missing: --mac-os-keyring-account ACCOUNT"
         invalid "--server https://example.org:1234/ --username testuser --password testpass --api-key APIKEY" "Invalid option `--api-key'"
         invalid "--server https://example.org:1234/ --api-key APIKEY --username testuser"                     "Invalid option `--username'"
 

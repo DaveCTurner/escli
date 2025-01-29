@@ -4,6 +4,7 @@
 module Config.File
     ( withConfig
     , saveConfigFile
+    , JsonConnection(..)
     ) where
 
 import Config
@@ -27,22 +28,25 @@ instance FromJSON JsonCredentials where
     parseJSON = withObject "JsonCredentials" $ \v -> JsonCredentials <$> do
         credType <- v .: "type"
         case credType of
-            "apikey"         -> ApiKeyCredentials       <$> v .: "var"
-            "mac-os-keyring" -> MacOsKeyringCredentials <$> v .: "service" <*> v .: "account"
             "basic"          -> BasicCredentials        <$> v .: "user"    <*> v .: "pass"
+            "apikey"         -> ApiKeyCredentials       <$> v .: "var"
+            "mac-os-keyring" -> MacOsKeyringCredentials <$> v .: "service" <*> v .:? "account"
             _                -> fail $ "unknown credentials type '" ++ credType ++ "'"
 
 instance ToJSON JsonCredentials where
     toJSON (JsonCredentials (BasicCredentials{..}))        = object ["type" .= ("basic"  :: String),         "user"    .= esCredentialsBasicUser, "pass" .= esCredentialsBasicPassword]
     toJSON (JsonCredentials (ApiKeyCredentials{..}))       = object ["type" .= ("apikey" :: String),         "var"     .= esCredentialsApiKeyEnvVar]
-    toJSON (JsonCredentials (MacOsKeyringCredentials{..})) = object ["type" .= ("mac-os-keyring" :: String), "service" .= esCredentialsKeyringService, "account" .= esCredentialsKeyringAccount]
+    toJSON (JsonCredentials (MacOsKeyringCredentials{..})) = object $
+        [ "type"    .= ("mac-os-keyring" :: String)
+        , "service" .= esCredentialsKeyringService
+        ] ++ maybe [] (\a -> ["account" .= a]) esCredentialsKeyringAccount
     toJSON (JsonCredentials v) = error $ "saving credentials " ++ show v ++ " not supported"
 
 newtype JsonConnection = JsonConnection { unJsonConnection :: ConnectionConfig }
 
 instance FromJSON JsonConnection where
     parseJSON = withObject "ConnectionConfig" $ \v -> JsonConnection <$> (ConnectionConfig
-        <$> (uriFromString      =<< (v .: "baseuri"))
+        <$> (uriFromString     =<< (v .: "baseuri"))
         <*> (unJsonCredentials <$> (v .: "credentials"))
         <*> (maybe DefaultCertificateVerificationConfig CustomCertificateVerificationConfig <$> (v .:! "certFile")))
         where

@@ -13,6 +13,7 @@ import Config
 import Config.File
 import Control.Monad
 import Control.Monad.Writer
+import CredentialsUtils
 import Data.Aeson
 import Data.Conduit
 import Data.Conduit.Attoparsec
@@ -219,15 +220,6 @@ curlCertificateVerificationOption :: CertificateVerificationConfig -> String
 curlCertificateVerificationOption NoCertificateVerificationConfig                     = " --insecure"
 curlCertificateVerificationOption (CustomCertificateVerificationConfig certStorePath) = " --cacert '" ++ certStorePath ++ "'"
 curlCertificateVerificationOption _                                                   = ""
-
-curlCredentialsOption :: Bool -> CredentialsConfig -> String
-curlCredentialsOption _                   NoCredentials = ""
-curlCredentialsOption esShowCurlPassword (BasicCredentials{..})        = " --user '" ++ esCredentialsBasicUser ++ ":" ++ (if esShowCurlPassword then (esCredentialsBasicPassword ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
-curlCredentialsOption _                  (ApiKeyCredentials{..})       = " --header \"Authorization: ApiKey ${" ++ esCredentialsApiKeyEnvVar ++ "}\" --header \"X-Management-Request: true\""
-curlCredentialsOption _                  (MacOsKeyringCredentials{..}) = " --header \"Authorization: ApiKey $(security find-generic-password"
-                                                                         ++ " -s " ++ show esCredentialsKeyringService
-                                                                         ++ " -a " ++ show esCredentialsKeyringAccount
-                                                                         ++ " -w)\" --header \"X-Management-Request: true\""
 
 runCommand :: URI -> Config -> (Request -> IO (Response BL.ByteString)) -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand

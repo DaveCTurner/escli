@@ -36,7 +36,7 @@ data CredentialsConfig
     = NoCredentials
     | BasicCredentials        { esCredentialsBasicUser :: String, esCredentialsBasicPassword :: String }
     | ApiKeyCredentials       { esCredentialsApiKeyEnvVar :: String }
-    | MacOsKeyringCredentials { esCredentialsKeyringService :: String, esCredentialsKeyringAccount :: String }
+    | MacOsKeyringCredentials { esCredentialsKeyringService :: String, esCredentialsKeyringAccount :: Maybe String }
     deriving (Show, Eq)
 
 data CertificateVerificationConfig

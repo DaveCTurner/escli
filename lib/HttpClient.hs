@@ -14,6 +14,7 @@ module HttpClient
     ) where
 
 import Config
+import CredentialsUtils
 import Data.Default.Class
 import Data.Maybe
 import Data.String.Utils (strip)
@@ -89,7 +90,7 @@ buildApplyCredentials = \case
                         : requestHeaders req
                     }
     MacOsKeyringCredentials{..} -> do
-        apiKey <- SP.readProcess "security" ["find-generic-password", "-s", esCredentialsKeyringService, "-a", esCredentialsKeyringAccount, "-w"] ""
+        apiKey <- SP.readProcess "security" (macOsKeyringLookupArgs esCredentialsKeyringService esCredentialsKeyringAccount) ""
         return $ \req -> req
             { requestHeaders
                 = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)
@@ -97,7 +98,6 @@ buildApplyCredentials = \case
                 : requestHeaders req
             }
     where credFromString = T.encodeUtf8 . T.pack
-
 
 runRequestWith :: HttpClient -> Request -> IO (Response BL.ByteString)
 runRequestWith httpClient request = runHttpClient httpClient request $ \response -> do

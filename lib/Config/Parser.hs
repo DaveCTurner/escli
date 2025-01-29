@@ -114,10 +114,10 @@ credentialsConfigParser
             (  long "mac-os-keyring-service"
             <> help "Name of service to look up in MacOS keyring"
             <> metavar "SERVICE")
-        <*> strOption
+        <*> optional (strOption
             (  long "mac-os-keyring-account"
             <> help "Name of account to look up in MacOS keyring"
-            <> metavar "ACCOUNT"))
+            <> metavar "ACCOUNT")))
     <|> pure NoCredentials
 
 certificateVerificationConfigParser :: Parser CertificateVerificationConfig

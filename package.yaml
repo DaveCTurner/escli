@@ -42,6 +42,7 @@ library:
   - Config
   - Config.Parser
   - Config.File
+  - CredentialsUtils
   - ESCommand
   - HttpClient
   ghc-options:
