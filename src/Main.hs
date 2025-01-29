@@ -222,10 +222,12 @@ curlCertificateVerificationOption _                                             
 
 curlCredentialsOption :: Bool -> CredentialsConfig -> String
 curlCredentialsOption _                   NoCredentials = ""
-curlCredentialsOption esShowCurlPassword (BasicCredentials userString passString)  = " --user '" ++ userString ++ ":" ++ (if esShowCurlPassword then (passString ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
-curlCredentialsOption _                  (ApiKeyCredentials apiKeyEnvVar)          = " --header \"Authorization: ApiKey ${" ++ apiKeyEnvVar ++ "}\" --header \"X-Management-Request: true\""
-curlCredentialsOption _                  (MacOsKeyringCredentials service account) = " --header \"Authorization: ApiKey $(security find-generic-password -s "
-                                                                                   ++ show service ++ " -a " ++ show account ++ " -w)\" --header \"X-Management-Request: true\""
+curlCredentialsOption esShowCurlPassword (BasicCredentials{..})        = " --user '" ++ esCredentialsBasicUser ++ ":" ++ (if esShowCurlPassword then (esCredentialsBasicPassword ++ "'") else "'$(cat escli_config.json | jq -r .credentials.pass)")
+curlCredentialsOption _                  (ApiKeyCredentials{..})       = " --header \"Authorization: ApiKey ${" ++ esCredentialsApiKeyEnvVar ++ "}\" --header \"X-Management-Request: true\""
+curlCredentialsOption _                  (MacOsKeyringCredentials{..}) = " --header \"Authorization: ApiKey $(security find-generic-password"
+                                                                         ++ " -s " ++ show esCredentialsKeyringService
+                                                                         ++ " -a " ++ show esCredentialsKeyringAccount
+                                                                         ++ " -w)\" --header \"X-Management-Request: true\""
 
 runCommand :: URI -> Config -> (Request -> IO (Response BL.ByteString)) -> ESCommand -> ConduitT ESCommand (String, String) IO ()
 runCommand

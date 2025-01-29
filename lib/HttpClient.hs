@@ -76,11 +76,11 @@ hostNameFromURI uri = fromMaybe (error $ "could not extract hostname from URI " 
 buildApplyCredentials :: CredentialsConfig -> IO (Request -> Request)
 buildApplyCredentials = \case
     NoCredentials                           -> return id
-    BasicCredentials  userString passString -> return $ applyBasicAuth (credFromString userString) (credFromString passString)
-    ApiKeyCredentials apiKeyEnvVar          -> do
-        maybeApiKey <- lookupEnv apiKeyEnvVar
+    BasicCredentials{..} -> return $ applyBasicAuth (credFromString esCredentialsBasicUser) (credFromString esCredentialsBasicPassword)
+    ApiKeyCredentials{..}          -> do
+        maybeApiKey <- lookupEnv esCredentialsApiKeyEnvVar
         case maybeApiKey of
-            Nothing -> error $ "Environment variable '" ++ apiKeyEnvVar ++ "' not set (maybe run set-cloud-env?)"
+            Nothing -> error $ "Environment variable '" ++ esCredentialsApiKeyEnvVar ++ "' not set (maybe run set-cloud-env?)"
             Just apiKey ->
                 return $ \req -> req
                     { requestHeaders
@@ -88,8 +88,8 @@ buildApplyCredentials = \case
                         : ("X-Management-Request", "true")
                         : requestHeaders req
                     }
-    MacOsKeyringCredentials service account -> do
-        apiKey <- SP.readProcess "security" ["find-generic-password", "-s", service, "-a", account, "-w"] ""
+    MacOsKeyringCredentials{..} -> do
+        apiKey <- SP.readProcess "security" ["find-generic-password", "-s", esCredentialsKeyringService, "-a", esCredentialsKeyringAccount, "-w"] ""
         return $ \req -> req
             { requestHeaders
                 = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)

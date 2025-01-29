@@ -33,9 +33,9 @@ instance FromJSON JsonCredentials where
             _                -> fail $ "unknown credentials type '" ++ credType ++ "'"
 
 instance ToJSON JsonCredentials where
-    toJSON (JsonCredentials (MacOsKeyringCredentials service account)) = object ["type" .= ("mac-os-keyring" :: String), "service" .= service, "account" .= account]
-    toJSON (JsonCredentials (ApiKeyCredentials       var))             = object ["type" .= ("apikey" :: String),         "var"     .= var]
-    toJSON (JsonCredentials (BasicCredentials        user pass))       = object ["type" .= ("basic"  :: String),         "user"    .= user, "pass" .= pass]
+    toJSON (JsonCredentials (BasicCredentials{..}))        = object ["type" .= ("basic"  :: String),         "user"    .= esCredentialsBasicUser, "pass" .= esCredentialsBasicPassword]
+    toJSON (JsonCredentials (ApiKeyCredentials{..}))       = object ["type" .= ("apikey" :: String),         "var"     .= esCredentialsApiKeyEnvVar]
+    toJSON (JsonCredentials (MacOsKeyringCredentials{..})) = object ["type" .= ("mac-os-keyring" :: String), "service" .= esCredentialsKeyringService, "account" .= esCredentialsKeyringAccount]
     toJSON (JsonCredentials v) = error $ "saving credentials " ++ show v ++ " not supported"
 
 newtype JsonConnection = JsonConnection { unJsonConnection :: ConnectionConfig }
