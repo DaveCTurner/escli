@@ -81,9 +81,11 @@ findConfigFile = go =<< getCurrentDirectory
 withConfig :: (Config -> IO a) -> IO a
 withConfig go = do
     envUrlEnvVar <- lookupEnv "ENV_URL"
+    apiKeyServiceEnvVar <- lookupEnv "API_KEY_SERVICE"
     argsConfig <- execParser $ configParserInfo ConfigParserContext
-        { configParserContextFileName = configFileName
-        , configParserContextApiRoot  = fromMaybe "unset" envUrlEnvVar
+        { configParserContextFileName      = configFileName
+        , configParserContextApiRoot       = fromMaybe "unset" envUrlEnvVar
+        , configParserContextApiKeyService = apiKeyServiceEnvVar
         }
     config <- if esConnectionConfig argsConfig == ConnectionConfig DefaultEndpoint NoCredentials DefaultCertificateVerificationConfig
         then do

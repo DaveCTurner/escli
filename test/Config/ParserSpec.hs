@@ -67,39 +67,49 @@ spec = do
 
             connectionConfig "--deployment abcdef" (\s -> s
                 { esEndpointConfig    = CloudDeploymentEndpoint testApiRoot "abcdef" Nothing
-                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "TEST_API_KEY_SERVICE" Nothing
                 })
 
             connectionConfig "--deployment abcdef --deployment-ref es-ref" (\s -> s
                 { esEndpointConfig    = CloudDeploymentEndpoint testApiRoot "abcdef" (Just "es-ref")
-                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "TEST_API_KEY_SERVICE" Nothing
                 })
 
-            connectionConfig "--deployment abcdef --api-key OTHER_API_KEY" (\s -> s
+            connectionConfig "--deployment abcdef --mac-os-keyring-service OTHER_SERVICE" (\s -> s
                 { esEndpointConfig    = CloudDeploymentEndpoint testApiRoot "abcdef" Nothing
-                , esCredentialsConfig = ApiKeyCredentials "OTHER_API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "OTHER_SERVICE" Nothing
+                })
+
+            connectionConfig "--deployment abcdef --mac-os-keyring-service OTHER_SERVICE --mac-os-keyring-account ACCT" (\s -> s
+                { esEndpointConfig    = CloudDeploymentEndpoint testApiRoot "abcdef" Nothing
+                , esCredentialsConfig = MacOsKeyringCredentials "OTHER_SERVICE" (Just "ACCT")
                 })
 
             connectionConfig "--deployment abcdef --cloud-api-root http://api.example.org/other/test/root" (\s -> s
                 { esEndpointConfig    = CloudDeploymentEndpoint (_u "http://api.example.org/other/test/root") "abcdef" Nothing
-                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "TEST_API_KEY_SERVICE" Nothing
                 })
 
         describe "Cloud project endpoints" $ do
 
             connectionConfig "--project abcdef" (\s -> s
                 { esEndpointConfig    = ServerlessProjectEndpoint testApiRoot "abcdef"
-                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "TEST_API_KEY_SERVICE" Nothing
                 })
 
-            connectionConfig "--project abcdef --api-key OTHER_API_KEY" (\s -> s
+            connectionConfig "--project abcdef --mac-os-keyring-service OTHER_SERVICE" (\s -> s
                 { esEndpointConfig    = ServerlessProjectEndpoint testApiRoot "abcdef"
-                , esCredentialsConfig = ApiKeyCredentials "OTHER_API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "OTHER_SERVICE" Nothing
+                })
+
+            connectionConfig "--project abcdef --mac-os-keyring-service OTHER_SERVICE --mac-os-keyring-account ACCT" (\s -> s
+                { esEndpointConfig    = ServerlessProjectEndpoint testApiRoot "abcdef"
+                , esCredentialsConfig = MacOsKeyringCredentials "OTHER_SERVICE" (Just "ACCT")
                 })
 
             connectionConfig "--project abcdef --cloud-api-root http://api.example.org/other/test/root" (\s -> s
                 { esEndpointConfig    = ServerlessProjectEndpoint (_u "http://api.example.org/other/test/root") "abcdef"
-                , esCredentialsConfig = ApiKeyCredentials "API_KEY"
+                , esCredentialsConfig = MacOsKeyringCredentials "TEST_API_KEY_SERVICE" Nothing
                 })
 
     describe "validation" $ do
@@ -116,12 +126,12 @@ spec = do
         invalid "--server https://example.org:1234/ --api-key APIKEY --username testuser"                     "Invalid option `--username'"
 
         invalid "--deployment abcdef --username foo"                               "Invalid option `--username'"
-        invalid "--deployment abcdef --mac-os-keyring-account ACCT"                "Invalid option `--mac-os-keyring-account'"
+        invalid "--deployment abcdef --api-key API_KEY"                            "Invalid option `--api-key'"
         invalid "--deployment abcdef --certificate-store cafile.pem"               "Invalid option `--certificate-store'"
         invalid "--deployment abcdef --insecurely-bypass-certificate-verification" "Invalid option `--insecurely-bypass-certificate-verification'"
 
         invalid "--project abcdef --username foo"                                  "Invalid option `--username'"
-        invalid "--project abcdef --mac-os-keyring-account ACCT"                   "Invalid option `--mac-os-keyring-account'"
+        invalid "--project abcdef --api-key API_KEY"                               "Invalid option `--api-key'"
         invalid "--project abcdef --certificate-store cafile.pem"                  "Invalid option `--certificate-store'"
         invalid "--project abcdef --insecurely-bypass-certificate-verification"    "Invalid option `--insecurely-bypass-certificate-verification'"
 
@@ -178,8 +188,9 @@ optsShouldFailWith args expectedMessage = case execParserPure defaultPrefs (conf
 
 testConfigParserContext :: ConfigParserContext
 testConfigParserContext = ConfigParserContext
-    { configParserContextFileName = "test_escli.json"
-    , configParserContextApiRoot  = "http://example.org/escli/api/root"
+    { configParserContextFileName      = "test_escli.json"
+    , configParserContextApiRoot       = "http://example.org/escli/api/root"
+    , configParserContextApiKeyService = Just "TEST_API_KEY_SERVICE"
     }
 
 testApiRoot :: URI

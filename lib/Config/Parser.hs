@@ -11,8 +11,9 @@ import Options.Applicative
 import Network.URI
 
 data ConfigParserContext = ConfigParserContext
-  { configParserContextFileName :: String
-  , configParserContextApiRoot  :: String
+  { configParserContextFileName      :: String
+  , configParserContextApiRoot       :: String
+  , configParserContextApiKeyService :: Maybe String
   } deriving (Show, Eq)
 
 configParserInfo :: ConfigParserContext -> ParserInfo Config
@@ -41,14 +42,6 @@ cloudApiRootParser ConfigParserContext{..} = uriFromString <$> strOption
         Nothing -> error $ "could not parse API root URL " ++ show s
         Just u  -> u
 
-apiKeyEnvVarParser :: Parser String
-apiKeyEnvVarParser = strOption
-    (  long "api-key"
-    <> help "Environment variable holding API key"
-    <> metavar "ENVVAR"
-    <> value "API_KEY"
-    <> showDefault)
-
 cloudDeploymentEndpointConfigParser :: ConfigParserContext -> Parser ConnectionConfig
 cloudDeploymentEndpointConfigParser configParserContext = buildConnectionConfig
     <$> strOption
@@ -60,11 +53,11 @@ cloudDeploymentEndpointConfigParser configParserContext = buildConnectionConfig
         <> help "Cloud deployment reference"
         <> metavar "REF-ID"))
     <*> cloudApiRootParser configParserContext
-    <*> apiKeyEnvVarParser
+    <*> contextCredentialsConfigParser configParserContext
     where
-        buildConnectionConfig deploymentId deploymentRefId apiRoot apiKeyVar = ConnectionConfig
+        buildConnectionConfig deploymentId deploymentRefId apiRoot credentialsConfig = ConnectionConfig
             { esEndpointConfig    = CloudDeploymentEndpoint apiRoot deploymentId deploymentRefId
-            , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+            , esCredentialsConfig = credentialsConfig
             , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
             }
 
@@ -75,11 +68,11 @@ serverlessProjectEndpointConfigParser configParserContext = buildConnectionConfi
         <> help "Cloud serverless project ID"
         <> metavar "PROJECT-ID")
     <*> cloudApiRootParser configParserContext
-    <*> apiKeyEnvVarParser
+    <*> contextCredentialsConfigParser configParserContext
     where
-        buildConnectionConfig projectId apiRoot apiKeyVar = ConnectionConfig
+        buildConnectionConfig projectId apiRoot credentialsConfig = ConnectionConfig
             { esEndpointConfig    = ServerlessProjectEndpoint apiRoot projectId
-            , esCredentialsConfig = ApiKeyCredentials apiKeyVar
+            , esCredentialsConfig = credentialsConfig
             , esCertificateVerificationConfig = DefaultCertificateVerificationConfig
             }
 
@@ -109,16 +102,25 @@ credentialsConfigParser
             (  long "api-key"
             <> help "Environment variable holding API key"
             <> metavar "ENVVAR"))
-    <|> (MacOsKeyringCredentials
-        <$> strOption
-            (  long "mac-os-keyring-service"
-            <> help "Name of service to look up in MacOS keyring"
-            <> metavar "SERVICE")
-        <*> optional (strOption
-            (  long "mac-os-keyring-account"
-            <> help "Name of account to look up in MacOS keyring"
-            <> metavar "ACCOUNT")))
+    <|> macOsKeyringCredentialsConfigParser
     <|> pure NoCredentials
+
+macOsKeyringCredentialsConfigParser :: Parser CredentialsConfig
+macOsKeyringCredentialsConfigParser = MacOsKeyringCredentials
+    <$> strOption
+        (  long "mac-os-keyring-service"
+        <> help "Name of service to look up in MacOS keyring"
+        <> metavar "SERVICE")
+    <*> optional (strOption
+        (  long "mac-os-keyring-account"
+        <> help "Name of account to look up in MacOS keyring"
+        <> metavar "ACCOUNT"))
+
+contextCredentialsConfigParser :: ConfigParserContext -> Parser CredentialsConfig
+contextCredentialsConfigParser ConfigParserContext{..} = macOsKeyringCredentialsConfigParser
+    <|> case configParserContextApiKeyService of
+            Nothing -> empty
+            Just keyringService -> pure $ MacOsKeyringCredentials keyringService Nothing
 
 certificateVerificationConfigParser :: Parser CertificateVerificationConfig
 certificateVerificationConfigParser
