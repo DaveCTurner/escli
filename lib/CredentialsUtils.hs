@@ -19,5 +19,5 @@ curlCredentialsOption _                  (ApiKeyCredentials{..})       = " --hea
 curlCredentialsOption _                  (MacOsKeyringCredentials{..}) = " --header \"Authorization: ApiKey $(security find-generic-password"
     ++ " -s " ++ show esCredentialsKeyringService
     ++ maybe "" (\a -> " -a " ++ show a) esCredentialsKeyringAccount
-    ++ " -w)\" --header \"X-Management-Request: true\""
+    ++ " -w | jq -r .key)\" --header \"X-Management-Request: true\""
 

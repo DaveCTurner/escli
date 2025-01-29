@@ -30,6 +30,7 @@ dependencies:
 - text
 - time
 - tls
+- utf8-string
 - x509-store
 - x509-system
 - x509-validation

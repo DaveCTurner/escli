@@ -27,7 +27,7 @@ spec = do
             `shouldBe` " --header \"Authorization: ApiKey ${VAR}\" --header \"X-Management-Request: true\""
     it "works with MacOsKeyringCredentials with just a service name" $
         curlCredentialsOption False (MacOsKeyringCredentials "SERVICENAME" Nothing)
-            `shouldBe` " --header \"Authorization: ApiKey $(security find-generic-password -s \"SERVICENAME\" -w)\" --header \"X-Management-Request: true\""
+            `shouldBe` " --header \"Authorization: ApiKey $(security find-generic-password -s \"SERVICENAME\" -w | jq -r .key)\" --header \"X-Management-Request: true\""
     it "works with MacOsKeyringCredentials with service and account names" $
         curlCredentialsOption False (MacOsKeyringCredentials "SERVICENAME" $ Just "ACCOUNTNAME")
-            `shouldBe` " --header \"Authorization: ApiKey $(security find-generic-password -s \"SERVICENAME\" -a \"ACCOUNTNAME\" -w)\" --header \"X-Management-Request: true\""
+            `shouldBe` " --header \"Authorization: ApiKey $(security find-generic-password -s \"SERVICENAME\" -a \"ACCOUNTNAME\" -w | jq -r .key)\" --header \"X-Management-Request: true\""

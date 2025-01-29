@@ -15,6 +15,8 @@ module HttpClient
 
 import Config
 import CredentialsUtils
+import Data.Aeson
+import Data.ByteString.UTF8 as BSU
 import Data.Default.Class
 import Data.Maybe
 import Data.String.Utils (strip)
@@ -90,7 +92,10 @@ buildApplyCredentials = \case
                         : requestHeaders req
                     }
     MacOsKeyringCredentials{..} -> do
-        apiKey <- SP.readProcess "security" (macOsKeyringLookupArgs esCredentialsKeyringService esCredentialsKeyringAccount) ""
+        keyringContentsString <- SP.readProcess "security" (macOsKeyringLookupArgs esCredentialsKeyringService esCredentialsKeyringAccount) ""
+        let apiKey = case eitherDecodeStrict $ BSU.fromString keyringContentsString of
+                            Left msg -> error $ "failed to decode keyring value as JSON: " ++ msg
+                            Right (KeyringEntry k) -> k
         return $ \req -> req
             { requestHeaders
                 = (hAuthorization,         credFromString $ "ApiKey " ++ strip apiKey)
@@ -98,6 +103,11 @@ buildApplyCredentials = \case
                 : requestHeaders req
             }
     where credFromString = T.encodeUtf8 . T.pack
+
+newtype KeyringEntry = KeyringEntry { unKeyringEntry :: String } deriving (Show, Eq)
+
+instance FromJSON KeyringEntry where
+    parseJSON = withObject "KeyringEntry" $ \v -> KeyringEntry <$> v .: "key"
 
 runRequestWith :: HttpClient -> Request -> IO (Response BL.ByteString)
 runRequestWith httpClient request = runHttpClient httpClient request $ \response -> do
