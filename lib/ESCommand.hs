@@ -6,7 +6,8 @@ import Control.Applicative
 import Control.Monad
 import qualified Data.Attoparsec.ByteString as AP
 import qualified Data.ByteString as B
-import Data.Aeson
+import Data.Aeson (Value)
+import Data.Aeson.Parser (json)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
