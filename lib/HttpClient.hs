@@ -15,6 +15,7 @@ module HttpClient
 
 import Config
 import CredentialsUtils
+import Control.Concurrent.MVar
 import Data.Aeson
 import Data.ByteString.UTF8 as BSU
 import Data.Default.Class
@@ -57,10 +58,19 @@ buildManager defaultBaseUri ConnectionConfig{..} = do
                 Just certStore -> return (certStore, validateDefault)
                 Nothing -> error $ "failed to read certificate store from " ++ certStorePath
 
+    sslKeyLogFileEnvVar <- lookupEnv "SSLKEYLOGFILE" -- TODO remove when tls-2.1.10+ available -- see https://github.com/haskell-tls/hs-tls/pull/499
+    maybeFileKeyLogger <- case sslKeyLogFileEnvVar of
+        Nothing -> return $ \_ -> return ()
+        Just sslKeyLogFile -> do
+            putStrLn $ "# WARNING: recording SSL session parameters to " ++ sslKeyLogFile
+            keyLogLock <- newMVar ()
+            return $ \msg -> withMVar keyLogLock $ \_ -> appendFile sslKeyLogFile (msg ++ "\n")
+
     let clientParams = (defaultParamsClient (hostName defaultBaseUri esEndpointConfig) B.empty)
             { clientSupported = def { supportedCiphers    = ciphersuite_default }
             , clientShared    = def { sharedCAStore       = certStore }
             , clientHooks     = def { onServerCertificate = verifyCert }
+            , clientDebug     = def { debugKeyLogger      = maybeFileKeyLogger }
             }
         httpClientSettings = mkManagerSettings (TLSSettings clientParams) Nothing
 
